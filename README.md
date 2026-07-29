@@ -12,8 +12,8 @@
 ## 下载
 
 - 最新版下载页：[GitHub Releases](https://github.com/northshore416/wuwa-afyg-tool-desktop/releases/latest)
-- Windows 安装包直链：[WUWA.AFYG.Tool.Setup.0.0.2.exe](https://github.com/northshore416/wuwa-afyg-tool-desktop/releases/download/v0.0.2/WUWA.AFYG.Tool.Setup.0.0.2.exe)
-- 便携版直链：[WUWA.AFYG.Tool.0.0.2.exe](https://github.com/northshore416/wuwa-afyg-tool-desktop/releases/download/v0.0.2/WUWA.AFYG.Tool.0.0.2.exe)
+- Windows 安装包直链：[WUWA.AFYG.Tool.Setup.0.0.3.exe](https://github.com/northshore416/wuwa-afyg-tool-desktop/releases/download/v0.0.3/WUWA.AFYG.Tool.Setup.0.0.3.exe)
+- 便携版直链：[WUWA.AFYG.Tool.0.0.3.exe](https://github.com/northshore416/wuwa-afyg-tool-desktop/releases/download/v0.0.3/WUWA.AFYG.Tool.0.0.3.exe)
 
 安装版支持选择安装目录，会创建桌面快捷方式和开始菜单快捷方式。便携版下载后可直接运行，不需要安装。
 
@@ -154,8 +154,8 @@ pnpm run desktop:dev
 
 打包完成后文件会输出到 `release` 目录，常用文件包括：
 
-- `WUWA AFYG Tool Setup 0.0.2.exe`：安装版，可选择安装目录。
-- `WUWA AFYG Tool 0.0.2.exe`：便携版，双击即用。
+- `WUWA AFYG Tool Setup 0.0.3.exe`：安装版，可选择安装目录。
+- `WUWA AFYG Tool 0.0.3.exe`：便携版，双击即用。
 
 ## API
 

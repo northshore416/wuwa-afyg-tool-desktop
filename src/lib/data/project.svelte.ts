@@ -7,8 +7,6 @@ import type { ConfigState } from '$lib/components/page/home/config/config.types'
 
 const PROJECTS_KEY = 'projects'
 const ACTIVE_KEY = 'project-active'
-const AUTOSAVE_PROJECTS_KEY = 'wuwa-afyg:projects-autosave'
-const AUTOSAVE_ACTIVE_KEY = 'wuwa-afyg:project-active-autosave'
 
 const PHASE_ORDER: PhaseKey[] = ['team', 'timeline', 'calculation', 'config']
 
@@ -76,26 +74,6 @@ function toPlain<T>(value: T): T {
     return JSON.parse(JSON.stringify(value))
 }
 
-function saveLocalMirror(projectData: Project[], activeProjectId: string) {
-    if (!browser) return
-    try {
-        localStorage.setItem(AUTOSAVE_PROJECTS_KEY, JSON.stringify(projectData))
-        localStorage.setItem(AUTOSAVE_ACTIVE_KEY, JSON.stringify(activeProjectId))
-    } catch (err) {
-        console.warn('[project autosave]', err)
-    }
-}
-
-function readLocalMirror<T>(key: string): T | null {
-    if (!browser) return null
-    try {
-        const raw = localStorage.getItem(key)
-        return raw ? (JSON.parse(raw) as T) : null
-    } catch (err) {
-        console.warn('[project autosave read]', err)
-        return null
-    }
-}
 export function createProjectData(name: string): Project {
     return normalizeProject({
         id: crypto.randomUUID(),
@@ -120,15 +98,12 @@ export async function loadProjects() {
 
     const saved = await dbGet<Project[]>(PROJECTS_KEY)
     const activeSaved = await dbGet<string>(ACTIVE_KEY)
-    const mirrorProjects = readLocalMirror<Project[]>(AUTOSAVE_PROJECTS_KEY)
-    const mirrorActive = readLocalMirror<string>(AUTOSAVE_ACTIVE_KEY)
-    const sourceProjects = saved?.data?.length ? saved.data : mirrorProjects
-    const sourceActive = saved?.data?.length ? activeSaved?.data : mirrorActive
 
-    if (sourceProjects && sourceProjects.length > 0) {
-        projects = sourceProjects.map(normalizeProject)
-        const found = sourceActive && projects.find((p) => p.id === sourceActive)
-        activeId = found ? sourceActive : projects[0].id
+    if (saved && saved.data.length > 0) {
+        projects = saved.data.map(normalizeProject)
+        const found = activeSaved?.data && projects.find((p) => p.id === activeSaved.data)
+        activeId = found ? activeSaved!.data : projects[0].id
+        await dbSet(ACTIVE_KEY, activeId)
         await persist()
     }
 }
@@ -266,7 +241,6 @@ export async function unlockPhase(id: string, phase: PhaseKey) {
 export async function setActiveProject(id: string) {
     if (id && !projects.find((p) => p.id === id)) return
     activeId = id
-    saveLocalMirror(toPlain(projects), activeId)
     await dbSet(ACTIVE_KEY, id)
 }
 
@@ -318,8 +292,5 @@ export function getPhaseOrder(): PhaseKey[] {
 }
 
 async function persist() {
-    const plainProjects = toPlain(projects)
-    saveLocalMirror(plainProjects, activeId)
-    await dbSet(PROJECTS_KEY, plainProjects)
-    await dbSet(ACTIVE_KEY, activeId)
+    await dbSet(PROJECTS_KEY, toPlain(projects))
 }
