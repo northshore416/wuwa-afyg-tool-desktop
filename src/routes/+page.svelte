@@ -48,6 +48,11 @@
         init as initCalculation
     } from '$lib/components/page/home/calculation/calculation.store.svelte'
     import { getConfig, init as initConfig } from '$lib/components/page/home/config/config.store.svelte'
+    import {
+        applyEchoImportPayload,
+        type EchoImportBridgeResult,
+        type EchoImportPayload
+    } from '$lib/desktop-extension/echo-import'
     import favicon from '$lib/assets/favicon.svg'
     import ProjectSidebar from '$lib/components/page/home/project-sidebar.svelte'
     import TeamConfig from '$lib/components/page/home/team-config.svelte'
@@ -140,6 +145,68 @@
     let activeId = $derived(getActiveId())
     let activeProject = $derived(getActiveProject())
 
+    function installEchoImportBridge() {
+        if (!browser) return
+
+        const importEchoes = async (payload: EchoImportPayload): Promise<EchoImportBridgeResult> => {
+            const project = getActiveProject()
+            if (!project) {
+                return { ok: false, applied: 0, warnings: [], message: '当前没有打开的项目' }
+            }
+            if (project.phases.config.locked) {
+                const message = '词条配置已锁定，请先解锁后再导入'
+                addToast(message, 'info')
+                return { ok: false, applied: 0, warnings: [], message }
+            }
+            if (!payload?.characters?.length) {
+                return { ok: false, applied: 0, warnings: ['缺少 characters 数据'], message: '导入数据为空' }
+            }
+
+            const result = applyEchoImportPayload(
+                payload,
+                project.team,
+                project.phases.config.data as ConfigState | null
+            )
+            if (result.applied === 0) {
+                return { ok: false, applied: 0, warnings: result.warnings, message: '没有可导入的声骸数据' }
+            }
+
+            await updateTeam(result.team)
+            await updateConfig(result.config)
+            initConfig(result.config, false)
+            activePhase = 'config'
+            showResult = false
+
+            const message = `已导入 ${result.applied} 个声骸词条配置`
+            addToast(message, 'success')
+            if (result.warnings.length > 0) addToast(`导入完成，但有 ${result.warnings.length} 条提示`, 'info')
+            return { ok: true, applied: result.applied, warnings: result.warnings, message }
+        }
+
+        window.WuwaDesktopEchoImport = {
+            version: 1,
+            getActiveTeam: () => getActiveProject()?.team.map((slot) => slot.character) ?? [],
+            importEchoes
+        }
+
+        const onMessage = (event: MessageEvent) => {
+            if (event.data?.type !== 'wuwa-afyg:echo-import') return
+            void importEchoes(event.data.payload)
+        }
+        window.addEventListener('message', onMessage)
+
+        return () => {
+            window.removeEventListener('message', onMessage)
+            if (window.WuwaDesktopEchoImport?.importEchoes === importEchoes) {
+                delete window.WuwaDesktopEchoImport
+            }
+        }
+    }
+
+    $effect(() => {
+        if (!browser) return
+        return installEchoImportBridge()
+    })
     $effect(() => {
         if (activeProject) loadCustomHits(activeProject.customSkillHits ?? {})
     })

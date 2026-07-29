@@ -7,6 +7,19 @@ const path = require('node:path')
 let mainWindow
 let serverProcess
 
+const DEFAULT_SERVER_PORT = 39817
+
+function isPortAvailable(port) {
+    return new Promise((resolve) => {
+        const server = net.createServer()
+        server.unref()
+        server.once('error', () => resolve(false))
+        server.listen(port, '127.0.0.1', () => {
+            server.close(() => resolve(true))
+        })
+    })
+}
+
 function getFreePort() {
     return new Promise((resolve, reject) => {
         const server = net.createServer()
@@ -46,8 +59,16 @@ function waitForServer(url, timeoutMs = 30000) {
     })
 }
 
+async function getServerPort() {
+    const preferred = Number(process.env.WUWA_DESKTOP_PORT || DEFAULT_SERVER_PORT)
+    if (Number.isInteger(preferred) && preferred > 0 && preferred < 65536 && (await isPortAvailable(preferred))) {
+        return preferred
+    }
+    return getFreePort()
+}
+
 async function startSvelteKitServer() {
-    const port = await getFreePort()
+    const port = await getServerPort()
     const serverEntry = path.join(app.getAppPath(), 'build', 'index.js')
     const serverUrl = `http://127.0.0.1:${port}`
 

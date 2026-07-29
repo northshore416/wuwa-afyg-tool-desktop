@@ -67,6 +67,42 @@
 
 分隔符会被尽量模糊处理，包括空格、换行、逗号、顿号、短横线等。角色名后面的冒号也会自动忽略。
 
+
+## 朋友插件声骸导入接口
+
+桌面版会在页面加载后暴露一个前端桥接对象，供外部插件注入脚本调用：
+
+```ts
+await window.WuwaDesktopEchoImport.importEchoes({
+  version: 1,
+  source: 'plugin-name',
+  characters: [
+    {
+      character: '千咲',
+      echoes: [
+        {
+          name: '声骸名称',
+          cost: 4,
+          mainStat: { type: '暴击率', value: 22, unit: '%' },
+          substats: [
+            { type: '暴击伤害', value: 21, unit: '%' },
+            { type: '攻击%', value: 11.6, unit: '%' },
+            { type: '共鸣效率', value: 12.4, unit: '%' }
+          ]
+        }
+      ]
+    }
+  ]
+})
+```
+
+也可以使用 `postMessage`：
+
+```ts
+window.postMessage({ type: 'wuwa-afyg:echo-import', payload }, '*')
+```
+
+接口会根据当前项目的三人配队匹配 `character`，同时更新队伍里的声骸名称/Cost，以及词条配置里的主词条、副词条。词条配置已锁定时会拒绝导入，需要先解锁。
 ## 原有功能
 
 - **队伍配置**：选择角色、武器、声骸、套装等配置。
