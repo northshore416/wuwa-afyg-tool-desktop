@@ -3,6 +3,7 @@ const { spawn } = require('node:child_process')
 const http = require('node:http')
 const net = require('node:net')
 const path = require('node:path')
+const packageJson = require('../package.json')
 
 let mainWindow
 let serverProcess
@@ -81,6 +82,8 @@ async function startSvelteKitServer() {
             NODE_ENV: 'production',
             WUWA_DESKTOP: '1',
             WUWA_APP_PACKAGED: '1',
+            WUWA_APP_VERSION: packageJson.version,
+            WUWA_APP_EXE: process.execPath,
             WUWA_DATA_DIR: app.getPath('userData')
         },
         stdio: 'ignore',

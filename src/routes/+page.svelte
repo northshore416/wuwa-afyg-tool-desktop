@@ -70,7 +70,7 @@
     let newName = $state('')
     let showResult = $state(false)
     let dataUpdating = $state(false)
-    let kernelUpdating = $state(false)
+    let versionUpdating = $state(false)
 
     let sidebarWidth = $state(240)
     let sidebarDragging = $state(false)
@@ -504,21 +504,20 @@
         return commit ? commit.slice(0, 7) : ''
     }
 
-    async function handleUpdateKernel() {
-        if (kernelUpdating) return
-        kernelUpdating = true
+    async function handleUpdateVersion() {
+        if (versionUpdating) return
+        versionUpdating = true
         try {
-            const res = await fetch('/api/v1/kernel/update', { method: 'POST' })
+            const res = await fetch('/api/v1/app-update/install', { method: 'POST' })
             const data = await res.json()
-            if (!res.ok || !data.ok) throw new Error(data.error ?? `HTTP ${res.status}`)
-            addToast(`内核已更新到 ${shortCommit(data.latestCommit)}，请重新构建或重启开发服务`, 'success')
+            if (!res.ok || !data.ok) throw new Error(data.error ?? 'unknown error')
+            addToast(data.message ?? `已准备更新到 ${data.latestVersion}`, data.downloaded ? 'success' : 'info', 6000)
         } catch (error) {
-            addToast('内核更新失败：' + (error instanceof Error ? error.message : String(error)), 'error')
+            addToast('版本更新失败：' + (error instanceof Error ? error.message : String(error)), 'error')
         } finally {
-            kernelUpdating = false
+            versionUpdating = false
         }
     }
-
     async function handleRefreshData() {
         if (dataUpdating) return
         dataUpdating = true
@@ -648,12 +647,12 @@
                             {dataUpdating ? '更新中...' : '更新数据'}
                         </button>
                         <button
-                            onclick={handleUpdateKernel}
-                            disabled={kernelUpdating}
+                            onclick={handleUpdateVersion}
+                            disabled={versionUpdating}
                             class="inline-flex items-center gap-1.5 rounded-lg border border-(--theme-card-border) bg-(--theme-card-bg) px-4 py-2 text-sm font-medium text-(--theme-card-text) transition-colors hover:bg-(--theme-card-bg-focused) disabled:opacity-40 disabled:pointer-events-none"
                         >
-                            <Icon icon={kernelUpdating ? 'mdi:loading' : 'mdi:source-branch-sync'} class="size-4" />
-                            {kernelUpdating ? '更新中...' : '更新内核'}
+                            <Icon icon={versionUpdating ? 'mdi:loading' : 'mdi:update'} class="size-4" />
+                            {versionUpdating ? '更新中...' : '更新版本'}
                         </button>
                         <button
                             onclick={() => goto('/api-test')}
