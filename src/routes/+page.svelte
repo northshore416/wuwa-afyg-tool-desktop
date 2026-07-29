@@ -1,0 +1,1021 @@
+<script lang="ts">
+    import { onMount, tick } from 'svelte'
+    import { goto } from '$app/navigation'
+    import { loadThemes } from '$lib/theme'
+    import {
+        loadProjects,
+        getProjects,
+        getActiveId,
+        getActiveProject,
+        createProject,
+        cloneProject,
+        renameProject,
+        deleteProject,
+        updateTeam,
+        updateTimeline,
+        updateCalculation,
+        updateConfig,
+        setActiveProject,
+        getPhaseOrder,
+        lockPhase,
+        unlockPhase,
+        importProjects,
+        createProjectData
+    } from '$lib/data/project.svelte'
+    import { getWWVersion, ensureVersion, resetVersionPromise } from '$lib/api/consts'
+    import { clearCache } from '$lib/data/api'
+    import { browser } from '$app/environment'
+    import type { PhaseKey, CharSlot, Project } from '$lib/data/types'
+    import type { TimelineData } from '$lib/components/page/home/timeline/timeline.types'
+    import type { CalcState } from '$lib/components/page/home/calculation/calculation.types'
+    import type { ConfigState } from '$lib/components/page/home/config/config.types'
+    import { PHASE_LABELS } from '$lib/consts/game-terms'
+    import { addToast } from '$lib/data/toast.svelte'
+    import { preloadCharElements } from '$lib/data/char-elements.svelte'
+    import {
+        loadIcons,
+        setShowDamageList,
+        loadCustomHits,
+        init as initTimeline
+    } from '$lib/components/page/home/timeline/timeline.store.svelte'
+    import {
+        setShowBuffModal,
+        getBuffDiffMode,
+        toggleBuffDiffMode,
+        syncGlobalBuffs,
+        getCalcState,
+        createBuffSet,
+        init as initCalculation
+    } from '$lib/components/page/home/calculation/calculation.store.svelte'
+    import { getConfig, init as initConfig } from '$lib/components/page/home/config/config.store.svelte'
+    import favicon from '$lib/assets/favicon.svg'
+    import ProjectSidebar from '$lib/components/page/home/project-sidebar.svelte'
+    import TeamConfig from '$lib/components/page/home/team-config.svelte'
+    import Timeline from '$lib/components/page/home/timeline/timeline.svelte'
+    import Calculation from '$lib/components/page/home/calculation/calculation.svelte'
+    import Config from '$lib/components/page/home/config/config.svelte'
+    import StatOverview from '$lib/components/page/home/config/stat-overview.svelte'
+    import Result from '$lib/components/page/home/result/result.svelte'
+    import PhaseTabs from '$lib/components/page/home/phase-tabs.svelte'
+    import QuickLookup from '$lib/components/page/home/calculation/quick-lookup.svelte'
+    import Modal from '$lib/components/layout/modal.svelte'
+    import Icon from '@iconify/svelte'
+
+    let showNewModal = $state(false)
+    let newName = $state('')
+    let showResult = $state(false)
+    let dataUpdating = $state(false)
+    let kernelUpdating = $state(false)
+
+    let sidebarWidth = $state(240)
+    let sidebarDragging = $state(false)
+
+    $effect(() => {
+        if (!sidebarDragging) return
+        const onMove = (e: MouseEvent) => {
+            sidebarWidth = e.clientX <= 144 ? 52 : Math.max(200, Math.min(400, e.clientX))
+        }
+        const onUp = () => {
+            sidebarDragging = false
+        }
+        window.addEventListener('mousemove', onMove)
+        window.addEventListener('mouseup', onUp)
+        return () => {
+            window.removeEventListener('mousemove', onMove)
+            window.removeEventListener('mouseup', onUp)
+        }
+    })
+
+    let showLookup = $state(false)
+    let showStatOverview = $state(false)
+    let resultRefreshKey = $state(0)
+    let renameModal = $state(false)
+    let renameId = $state('')
+    let renameValue = $state('')
+
+    let cloneModal = $state(false)
+    let cloneId = $state('')
+    let cloneName = $state('')
+    let cloneSelections = $state<Record<PhaseKey, boolean>>({
+        team: true,
+        timeline: false,
+        calculation: false,
+        config: false
+    })
+    let cloneResult = $state(false)
+
+    let deleteModal = $state(false)
+    let deleteId = $state('')
+    let deleteName = $state('')
+
+    let exportModal = $state(false)
+    let exportId = $state('')
+    let exportSelections = $state<Record<PhaseKey, boolean>>({
+        team: true,
+        timeline: false,
+        calculation: false,
+        config: false
+    })
+    let exportResult = $state(false)
+
+    let importInput = $state<HTMLInputElement | undefined>()
+
+    let activePhase = $state<PhaseKey>('team')
+
+    onMount(async () => {
+        await ensureVersion()
+        if (browser) {
+            const prev = localStorage.getItem('wuwa-afyg:version')
+            if (prev && prev !== getWWVersion()) {
+                clearCache()
+            }
+            localStorage.setItem('wuwa-afyg:version', getWWVersion())
+        }
+        loadThemes()
+        loadProjects()
+        loadIcons()
+    })
+
+    let projects = $derived(getProjects())
+    let activeId = $derived(getActiveId())
+    let activeProject = $derived(getActiveProject())
+
+    $effect(() => {
+        if (activeProject) loadCustomHits(activeProject.customSkillHits ?? {})
+    })
+
+    $effect(() => {
+        const names = new Set<string>()
+        for (const p of projects) {
+            for (const s of p.team) {
+                if (s.character) names.add(s.character)
+            }
+            if (p.lockedTeamNames) {
+                for (const n of p.lockedTeamNames) names.add(n)
+            }
+        }
+        if (names.size > 0) {
+            preloadCharElements([...names])
+        }
+    })
+
+    function handleCreate(name: string) {
+        if (!name.trim()) return
+        createProject(name.trim())
+        showNewModal = false
+        newName = ''
+        initForActiveProject()
+        addToast('项目已创建', 'success')
+    }
+
+    function openRename(id: string) {
+        const p = projects.find((pr) => pr.id === id)
+        if (!p) return
+        renameId = id
+        renameValue = p.name
+        renameModal = true
+    }
+
+    function handleRename() {
+        if (!renameValue.trim()) return
+        renameProject(renameId, renameValue.trim())
+        renameModal = false
+        addToast('项目已重命名', 'success')
+    }
+
+    function openClone(id: string) {
+        const p = projects.find((pr) => pr.id === id)
+        if (!p) return
+        cloneId = id
+        cloneName = `${p.name}（副本）`
+
+        const order = getPhaseOrder()
+        const atIdx = order.indexOf(activePhase)
+        const selections: Record<PhaseKey, boolean> = {
+            team: false,
+            timeline: false,
+            calculation: false,
+            config: false
+        }
+        for (let i = 0; i < order.length; i++) {
+            selections[order[i]] = i <= atIdx
+        }
+        cloneSelections = selections
+
+        cloneResult = false
+        cloneModal = true
+    }
+
+    async function handleClone() {
+        if (!cloneName.trim()) return
+        const selected = (Object.entries(cloneSelections) as [PhaseKey, boolean][]).filter(([, v]) => v).map(([k]) => k)
+        if (cloneResult) selected.push('result' as never)
+        const p = await cloneProject(cloneId, cloneName.trim(), selected)
+        if (p) {
+            cloneModal = false
+            const firstUnchecked = getPhaseOrder().find((ph) => !cloneSelections[ph]) ?? 'config'
+            activePhase = firstUnchecked
+            addToast('项目已复制', 'success')
+        }
+    }
+
+    function openDelete(id: string) {
+        const p = projects.find((pr) => pr.id === id)
+        if (!p) return
+        deleteId = id
+        deleteName = p.name
+        deleteModal = true
+    }
+
+    function handleDelete() {
+        deleteProject(deleteId)
+        deleteModal = false
+        addToast('项目已删除', 'info')
+    }
+
+    function goHome() {
+        setActiveProject('')
+        activePhase = 'team'
+    }
+
+    function openExport(id: string) {
+        exportId = id
+        const order = getPhaseOrder()
+        const selections: Record<PhaseKey, boolean> = {
+            team: false,
+            timeline: false,
+            calculation: false,
+            config: false
+        }
+        for (let i = 0; i < order.length; i++) selections[order[i]] = i <= order.indexOf(activePhase)
+        exportSelections = selections
+        exportResult = false
+        exportModal = true
+    }
+
+    function toggleExportPhase(phase: PhaseKey) {
+        const order = getPhaseOrder()
+        const idx = order.indexOf(phase)
+        const next = !exportSelections[phase]
+        const updated: Record<string, boolean> = {}
+        for (const p of order) {
+            const pidx = order.indexOf(p)
+            if (next && pidx <= idx) updated[p] = true
+            else if (!next && pidx >= idx) updated[p] = false
+            else updated[p] = exportSelections[p]
+        }
+        exportSelections = updated as Record<PhaseKey, boolean>
+    }
+
+    function handleExport() {
+        const p = projects.find((pr) => pr.id === exportId)
+        if (!p) return
+        const selected = (Object.entries(exportSelections) as [PhaseKey, boolean][])
+            .filter(([, v]) => v)
+            .map(([k]) => k)
+        const data: Record<string, unknown> = { id: p.id, name: p.name, createdAt: p.createdAt }
+        if (selected.includes('team')) {
+            data.team = p.team
+            if (p.lockedTeamKey) data.lockedTeamKey = p.lockedTeamKey
+            if (p.lockedTeamNames) data.lockedTeamNames = p.lockedTeamNames
+        }
+        data.customSkillHits = p.customSkillHits ?? {}
+        const phases: Record<string, { locked: boolean; data: unknown }> = {}
+        for (const ph of getPhaseOrder()) {
+            if (selected.includes(ph)) {
+                phases[ph] = { locked: p.phases[ph]?.locked ?? false, data: p.phases[ph]?.data ?? null }
+            }
+        }
+        data.phases = phases
+        if (exportResult) {
+            data.resultAnalysis = p.resultAnalysis ?? null
+        }
+        const blob = new Blob([JSON.stringify({ version: 1, exportedAt: Date.now(), project: data })], {
+            type: 'application/json'
+        })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `${p.name}.json`
+        a.click()
+        URL.revokeObjectURL(url)
+        exportModal = false
+        addToast('项目已导出', 'success')
+    }
+
+    function handleImport() {
+        const file = importInput?.files?.[0]
+        if (!file) return
+        const reader = new FileReader()
+        reader.onload = () => {
+            try {
+                const raw = JSON.parse(reader.result as string)
+                const rawProjects = raw?.version
+                    ? Array.isArray(raw.project)
+                        ? raw.project
+                        : [raw.project]
+                    : Array.isArray(raw)
+                      ? raw
+                      : [raw]
+                const normalized = rawProjects.map((item: Record<string, unknown>) => ({
+                    id: (item.id as string) || crypto.randomUUID(),
+                    name: (item.name as string) || '导入项目',
+                    createdAt: (item.createdAt as number) || Date.now(),
+                    team: (item.team as never) || [
+                        {
+                            character: null,
+                            weapon: null,
+                            triggerSets: [],
+                            echoes: [
+                                { name: null, cost: 0 },
+                                { name: null, cost: 0 },
+                                { name: null, cost: 0 },
+                                { name: null, cost: 0 },
+                                { name: null, cost: 0 }
+                            ]
+                        }
+                    ],
+                    phases: {
+                        team: (item.phases as Record<string, unknown>)?.team ?? { locked: false, data: null },
+                        timeline: (item.phases as Record<string, unknown>)?.timeline ?? { locked: false, data: null },
+                        calculation: (item.phases as Record<string, unknown>)?.calculation ?? {
+                            locked: false,
+                            data: null
+                        },
+                        config: (item.phases as Record<string, unknown>)?.config ?? { locked: false, data: null }
+                    },
+                    customSkillHits: (item.customSkillHits as Record<string, unknown[]>) ?? {}
+                })) as Project[]
+                importProjects(normalized)
+                addToast('项目已导入', 'success')
+            } catch {
+                addToast('导入失败：文件格式错误', 'error')
+            }
+        }
+        reader.readAsText(file)
+        if (importInput) importInput.value = ''
+    }
+
+    function handleSelectProject(id: string) {
+        setActiveProject(id)
+        initForActiveProject()
+    }
+
+    function initForActiveProject() {
+        setShowBuffModal(false)
+        const p = getActiveProject()
+        if (!p) {
+            activePhase = 'team'
+            return
+        }
+        initTimeline(
+            p.phases.timeline.data as TimelineData | null,
+            () => {},
+            p.team,
+            p.phases.timeline?.locked ?? false
+        )
+        initCalculation(
+            p.team,
+            p.phases.timeline.data as TimelineData | null,
+            p.phases.calculation.data as CalcState | null,
+            p.phases.calculation?.locked ?? false
+        )
+        initConfig(p.phases.config.data as ConfigState | null, p.phases.config?.locked ?? false)
+        const order = getPhaseOrder()
+        let lastLocked = -1
+        for (let i = order.length - 1; i >= 0; i--) {
+            if (p.phases[order[i]]?.locked === true) {
+                lastLocked = i
+                break
+            }
+        }
+        if (lastLocked < 0) {
+            activePhase = 'team'
+        } else if (lastLocked === order.length - 1) {
+            showResult = true
+        } else {
+            activePhase = order[lastLocked + 1]
+        }
+    }
+
+    let teamPhaseLocked = $derived(activeProject?.phases.team?.locked ?? false)
+    let allPhasesLocked = $derived(
+        activeProject ? getPhaseOrder().every((p) => activeProject!.phases[p]?.locked === true) : false
+    )
+
+    function toggleClonePhase(phase: PhaseKey) {
+        const order = getPhaseOrder()
+        const idx = order.indexOf(phase)
+        const next = !cloneSelections[phase]
+        const updated: Record<string, boolean> = {}
+        for (const p of order) {
+            const pidx = order.indexOf(p)
+            if (next && pidx <= idx) {
+                updated[p] = true
+            } else if (!next && pidx >= idx) {
+                updated[p] = false
+            } else {
+                updated[p] = cloneSelections[p]
+            }
+        }
+        cloneSelections = updated as Record<PhaseKey, boolean>
+    }
+
+    let phaseLocked = $derived(activeProject?.phases[activePhase]?.locked ?? false)
+    let canLock = $derived.by(() => {
+        if (phaseLocked) return false
+        const idx = getPhaseOrder().indexOf(activePhase)
+        if (idx === 0) return activeProject ? isTeamComplete(activeProject.team) : false
+        return activeProject?.phases[getPhaseOrder()[idx - 1]]?.locked === true
+    })
+
+    function isTeamComplete(team: [CharSlot, CharSlot, CharSlot]): boolean {
+        return team.some((s) => s.character !== null && s.weapon !== null)
+    }
+
+    function shortCommit(commit: string) {
+        return commit ? commit.slice(0, 7) : ''
+    }
+
+    async function handleUpdateKernel() {
+        if (kernelUpdating) return
+        kernelUpdating = true
+        try {
+            const res = await fetch('/api/v1/kernel/update', { method: 'POST' })
+            const data = await res.json()
+            if (!res.ok || !data.ok) throw new Error(data.error ?? `HTTP ${res.status}`)
+            addToast(`内核已更新到 ${shortCommit(data.latestCommit)}，请重新构建或重启开发服务`, 'success')
+        } catch (error) {
+            addToast('内核更新失败：' + (error instanceof Error ? error.message : String(error)), 'error')
+        } finally {
+            kernelUpdating = false
+        }
+    }
+
+    async function handleRefreshData() {
+        if (dataUpdating) return
+        dataUpdating = true
+        try {
+            const res = await fetch('/api/v1/cache/refresh')
+            const data = await res.json()
+            if (!res.ok || !data.ok) throw new Error(data.error ?? `HTTP ${res.status}`)
+            clearCache()
+            resetVersionPromise()
+            await ensureVersion()
+            addToast('数据已更新', 'success')
+        } catch (error) {
+            addToast('更新失败，请检查网络或稍后重试', 'error')
+        } finally {
+            dataUpdating = false
+        }
+    }
+
+    function handleUpdateTeam(team: [CharSlot, CharSlot, CharSlot]) {
+        updateTeam(team)
+    }
+
+    function handleResetTeam() {
+        if (!activeProject) return
+        unlockPhase(activeProject.id, 'team')
+    }
+
+    function handleLockPhase() {
+        if (!activeProject) return
+        lockPhase(activePhase)
+        if (activePhase === 'timeline') {
+            syncGlobalBuffs(activeProject.team.map((s) => s.character))
+            updateCalculation(getCalcState())
+        }
+        if (activePhase === 'config') {
+            updateConfig(getConfig())
+        }
+        addToast('当前环节已锁定', 'success')
+    }
+
+    function handleUnlockPhase() {
+        if (!activeProject) return
+        unlockPhase(activeProject.id, activePhase)
+        addToast('当前环节已解锁', 'info')
+    }
+
+    function handleUnlockTab(phase: PhaseKey) {
+        if (!activeProject) return
+        unlockPhase(activeProject.id, phase)
+        activePhase = phase
+        showResult = false
+        addToast('当前环节已解锁', 'info')
+    }
+
+    function handleLockTab(phase: PhaseKey) {
+        if (!activeProject) return
+        const idx = getPhaseOrder().indexOf(phase)
+        if (idx === 0 && !isTeamComplete(activeProject.team)) return
+        if (idx > 0 && !activeProject.phases[getPhaseOrder()[idx - 1]]?.locked) return
+        lockPhase(phase)
+        if (phase === 'timeline') {
+            syncGlobalBuffs(activeProject.team.map((s) => s.character))
+            updateCalculation(getCalcState())
+        }
+        if (phase === 'config') {
+            updateConfig(getConfig())
+        }
+        addToast('当前环节已锁定', 'success')
+    }
+</script>
+
+<div class="flex h-dvh overflow-hidden bg-(--theme-layout-bg) text-(--theme-layout-text)">
+    <ProjectSidebar
+        {projects}
+        {activeId}
+        width={sidebarWidth}
+        dragging={sidebarDragging}
+        oncreate={() => {
+            newName = ''
+            showNewModal = true
+        }}
+        onimport={() => importInput?.click()}
+        onhome={goHome}
+        onrename={openRename}
+        onclone={openClone}
+        onexport={openExport}
+        ondelete={openDelete}
+        onselect={handleSelectProject}
+    />
+    <button
+        aria-label="调整侧边栏宽度"
+        class="shrink-0 w-1 cursor-col-resize transition-colors hover:bg-indigo-500/50"
+        style="background: transparent;"
+        onmousedown={(e) => {
+            e.preventDefault()
+            if (sidebarWidth === 52) sidebarWidth = 200
+            sidebarDragging = true
+        }}
+    ></button>
+    <input type="file" accept=".json" class="hidden" bind:this={importInput} onchange={handleImport} />
+
+    <div class="flex flex-1 flex-col overflow-hidden">
+        {#if !activeProject}
+            <div class="flex flex-1 items-center justify-center">
+                <div class="text-center">
+                    <img src={favicon} alt="椰果工具箱" class="mx-auto mb-4 size-12" />
+                    <h2 class="mb-2 text-lg font-semibold">椰果工具箱</h2>
+                    <p class="mb-6 text-sm text-zinc-500">游戏数据版本：{getWWVersion()}</p>
+                    <div class="flex justify-center gap-3">
+                        <button
+                            onclick={() => {
+                                newName = ''
+                                showNewModal = true
+                            }}
+                            class="inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium transition-colors"
+                            style="background: var(--theme-btn-bg); color: var(--theme-btn-text);"
+                        >
+                            <Icon icon="mdi:plus" class="size-4" />
+                            新建项目</button
+                        >
+                        <button
+                            onclick={handleRefreshData}
+                            disabled={dataUpdating}
+                            class="inline-flex items-center gap-1.5 rounded-lg border border-(--theme-card-border) bg-(--theme-card-bg) px-4 py-2 text-sm font-medium text-(--theme-card-text) transition-colors hover:bg-(--theme-card-bg-focused) disabled:opacity-40 disabled:pointer-events-none"
+                        >
+                            <Icon icon={dataUpdating ? 'mdi:loading' : 'mdi:database-sync-outline'} class="size-4" />
+                            {dataUpdating ? '更新中...' : '更新数据'}
+                        </button>
+                        <button
+                            onclick={handleUpdateKernel}
+                            disabled={kernelUpdating}
+                            class="inline-flex items-center gap-1.5 rounded-lg border border-(--theme-card-border) bg-(--theme-card-bg) px-4 py-2 text-sm font-medium text-(--theme-card-text) transition-colors hover:bg-(--theme-card-bg-focused) disabled:opacity-40 disabled:pointer-events-none"
+                        >
+                            <Icon icon={kernelUpdating ? 'mdi:loading' : 'mdi:source-branch-sync'} class="size-4" />
+                            {kernelUpdating ? '更新中...' : '更新内核'}
+                        </button>
+                        <button
+                            onclick={() => goto('/api-test')}
+                            class="inline-flex items-center gap-1.5 rounded-lg border border-(--theme-card-border) bg-(--theme-card-bg) px-4 py-2 text-sm font-medium text-(--theme-card-text) transition-colors hover:bg-(--theme-card-bg-focused)"
+                        >
+                            <Icon icon="mdi:api" class="size-4" />
+                            接口测试</button
+                        >
+                    </div>
+                </div>
+            </div>
+        {:else if activeProject}
+            <PhaseTabs
+                project={activeProject}
+                active={activePhase}
+                {showResult}
+                onchange={(k) => {
+                    activePhase = k
+                    showResult = false
+                }}
+                resultEnabled={teamPhaseLocked}
+                onresult={() => (showResult = true)}
+                onunlock={handleUnlockTab}
+                onlock={handleLockTab}
+            />
+
+            <div class="flex-1 overflow-hidden relative">
+                {#if showResult}
+                    <Result
+                        team={activeProject.team}
+                        calcState={activeProject.phases.calculation.data as CalcState | null}
+                        configState={activeProject.phases.config.data as ConfigState | null}
+                        refreshKey={resultRefreshKey}
+                    />
+                {:else if activePhase === 'team'}
+                    <TeamConfig
+                        team={activeProject.team}
+                        onupdate={handleUpdateTeam}
+                        onreset={handleResetTeam}
+                        locked={teamPhaseLocked}
+                    />
+                {:else if activePhase === 'timeline'}
+                    <Timeline
+                        team={activeProject.team}
+                        locked={phaseLocked}
+                        data={activeProject.phases.timeline.data as TimelineData | null}
+                        onupdate={(data) => updateTimeline(data)}
+                    />
+                {:else if activePhase === 'calculation'}
+                    <Calculation
+                        team={activeProject.team}
+                        timelineData={activeProject.phases.timeline.data as TimelineData | null}
+                        calcState={activeProject.phases.calculation.data as CalcState | null}
+                        locked={phaseLocked}
+                        onupdate={(state) => updateCalculation(state)}
+                    />
+                {:else}
+                    <Config
+                        team={activeProject.team}
+                        data={activeProject.phases.config.data as ConfigState | null}
+                        locked={phaseLocked}
+                        onupdate={(state) => updateConfig(state)}
+                    />
+                {/if}
+                {#if showStatOverview}
+                    <StatOverview
+                        team={activeProject.team}
+                        configState={activeProject.phases.config.data as ConfigState | null}
+                        calcState={activeProject.phases.calculation.data as CalcState | null}
+                        onclose={() => (showStatOverview = false)}
+                    />
+                {/if}
+                {#if !showResult && phaseLocked}
+                    <div
+                        class="absolute inset-0 z-40 flex items-center justify-center pointer-events-none select-none"
+                        style="background: var(--theme-watermark-bg, rgba(0,0,0,0.1))"
+                    >
+                        <div
+                            class="flex items-center gap-6 text-[7.5rem] font-bold tracking-widest"
+                            style="transform: rotate(-30deg); color: var(--theme-watermark-text, rgba(255,255,255,0.1))"
+                        >
+                            <Icon icon="mdi:lock" class="size-32" />
+                            已锁定
+                        </div>
+                    </div>
+                {/if}
+            </div>
+
+            <div
+                class="flex shrink-0 items-center gap-2 border-t border-white/5 px-4 py-2.5"
+                style="background: var(--theme-sidebar-bg); color: var(--theme-sidebar-text)"
+            >
+                {#if !showResult}
+                    <button
+                        onclick={() => (showLookup = true)}
+                        disabled={!teamPhaseLocked}
+                        class="inline-flex items-center gap-1.5 rounded-lg border border-(--theme-sidebar-text)/20 px-3 py-1.5 text-sm text-(--theme-sidebar-text) transition-colors hover:border-(--theme-sidebar-text)/40 disabled:opacity-40 disabled:pointer-events-none"
+                    >
+                        <Icon icon="mdi:book-search-outline" class="size-4 shrink-0" />
+                        速查</button
+                    >
+                    {#if activePhase === 'timeline'}
+                        <button
+                            onclick={() => setShowDamageList(true)}
+                            class="inline-flex items-center gap-1.5 rounded-lg border border-(--theme-sidebar-text)/20 px-3 py-1.5 text-sm text-(--theme-sidebar-text) transition-colors hover:border-(--theme-sidebar-text)/40"
+                        >
+                            <Icon icon="mdi:chart-box-outline" class="size-4 shrink-0" />
+                            查看所有伤害</button
+                        >
+                    {/if}
+                    {#if activePhase === 'calculation'}
+                        <button
+                            onclick={() => setShowBuffModal(true)}
+                            class="inline-flex items-center gap-1.5 rounded-lg border border-(--theme-sidebar-text)/20 px-3 py-1.5 text-sm text-(--theme-sidebar-text) transition-colors hover:border-(--theme-sidebar-text)/40"
+                        >
+                            <Icon icon="mdi:tune-variant" class="size-4 shrink-0" />
+                            BUFF 配置</button
+                        >
+                        <button
+                            onclick={toggleBuffDiffMode}
+                            class="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm transition-colors {getBuffDiffMode()
+                                ? 'border-(--theme-accent-bg)'
+                                : 'border-(--theme-sidebar-text)/20'}"
+                            style="color: {getBuffDiffMode()
+                                ? 'var(--theme-accent-text)'
+                                : 'var(--theme-sidebar-text)'}"
+                        >
+                            <Icon
+                                icon={getBuffDiffMode() ? 'mdi:swap-vertical-bold' : 'mdi:swap-vertical'}
+                                class="size-4 shrink-0"
+                            />
+                            {getBuffDiffMode() ? 'Buff: DIFF' : 'Buff: ALL'}
+                        </button>
+                    {/if}
+                    {#if activePhase === 'config'}
+                        <button
+                            onclick={() => (showStatOverview = true)}
+                            class="inline-flex items-center gap-1.5 rounded-lg border border-(--theme-sidebar-text)/20 px-3 py-1.5 text-sm text-(--theme-sidebar-text) transition-colors hover:border-(--theme-sidebar-text)/40"
+                        >
+                            <Icon icon="mdi:account-details" class="size-4 shrink-0" />
+                            角色面板总览</button
+                        >
+                    {/if}
+                {:else}
+                    <button
+                        onclick={async () => {
+                            showResult = false
+                            activePhase = 'team'
+                            await tick()
+                            activePhase = 'timeline'
+                            await tick()
+                            activePhase = 'calculation'
+                            await tick()
+                            activePhase = 'config'
+                            await tick()
+                            showResult = true
+                            resultRefreshKey++
+                        }}
+                        class="inline-flex items-center gap-1.5 rounded-lg border border-(--theme-sidebar-text)/20 px-3 py-1.5 text-sm text-(--theme-sidebar-text) transition-colors hover:border-(--theme-sidebar-text)/40"
+                    >
+                        <Icon icon="mdi:refresh" class="size-4 shrink-0" />
+                        刷新结果</button
+                    >
+                {/if}
+                <div class="flex-1"></div>
+                <button
+                    onclick={handleRefreshData}
+                    disabled={dataUpdating}
+                    class="inline-flex items-center gap-1.5 rounded-lg border border-(--theme-sidebar-text)/20 px-3 py-1.5 text-sm text-(--theme-sidebar-text) transition-colors hover:border-(--theme-sidebar-text)/40 disabled:opacity-40 disabled:pointer-events-none"
+                >
+                    <Icon icon={dataUpdating ? 'mdi:loading' : 'mdi:database-sync-outline'} class="size-4 shrink-0" />
+                    {dataUpdating ? '更新中...' : '更新数据'}
+                </button>
+                {#if !showResult}
+                    <button
+                        onclick={phaseLocked ? handleUnlockPhase : handleLockPhase}
+                        disabled={!phaseLocked && !canLock}
+                        class="inline-flex items-center gap-1.5 rounded-lg border border-(--theme-sidebar-text)/20 px-3 py-1.5 text-sm text-(--theme-sidebar-text) transition-colors hover:border-(--theme-sidebar-text)/40 disabled:opacity-40 disabled:pointer-events-none"
+                    >
+                        <Icon
+                            icon={phaseLocked ? 'mdi:lock-open-variant-outline' : 'mdi:lock-outline'}
+                            class="size-4 shrink-0"
+                        />
+                        {phaseLocked ? '解锁' : '锁定'}
+                    </button>
+                {/if}
+            </div>
+        {/if}
+    </div>
+</div>
+
+{#if activeProject}
+    <QuickLookup
+        open={showLookup}
+        team={activeProject.team}
+        showBuffOption={activePhase === 'calculation'}
+        showCustomHitOption={false}
+        onCreateBuff={(name) => {
+            createBuffSet(name)
+            showLookup = false
+            setShowBuffModal(true)
+        }}
+        onclose={() => (showLookup = false)}
+    />
+{/if}
+
+<svelte:head><title>椰果工具箱</title></svelte:head>
+
+<svelte:window
+    onkeydown={(e) => {
+        if (e.key === 'Escape') {
+            showNewModal = false
+            renameModal = false
+            cloneModal = false
+            deleteModal = false
+        }
+    }}
+/>
+
+<!-- New Project Modal -->
+{#if showNewModal}
+    <Modal open={true} onclose={() => (showNewModal = false)}>
+        {#snippet title()}
+            新建项目
+        {/snippet}
+        <div class="space-y-4">
+            <div>
+                <label for="project-name" class="mb-1 block text-xs text-zinc-500">项目名称</label>
+                <input
+                    id="project-name"
+                    bind:value={newName}
+                    placeholder="请输入项目名称"
+                    class="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none transition-colors placeholder:text-zinc-700 focus:border-indigo-500/50"
+                    style="background: var(--theme-search-box-bg); color: var(--theme-search-box-text)"
+                    onkeydown={(e) => e.key === 'Enter' && handleCreate(newName)}
+                />
+            </div>
+            <div class="flex justify-end gap-2">
+                <button
+                    onclick={() => (showNewModal = false)}
+                    class="h-7 rounded-md bg-(--theme-card-bg) px-3 text-xs text-(--theme-muted-text) transition-colors hover:bg-(--theme-card-bg-focused)"
+                >
+                    取消
+                </button>
+                <button
+                    disabled={!newName.trim()}
+                    onclick={() => handleCreate(newName)}
+                    class="h-7 rounded-md px-3 text-xs transition-all hover:brightness-125 disabled:opacity-40 disabled:pointer-events-none"
+                    style="background: var(--theme-btn-bg); color: var(--theme-btn-text);"
+                >
+                    创建
+                </button>
+            </div>
+        </div>
+    </Modal>
+{/if}
+
+<!-- Rename Modal -->
+{#if renameModal}
+    <Modal open={true} onclose={() => (renameModal = false)}>
+        {#snippet title()}
+            重命名项目
+        {/snippet}
+        <div class="space-y-4">
+            <div>
+                <label for="rename-name" class="mb-1 block text-xs text-zinc-500">项目名称</label>
+                <input
+                    id="rename-name"
+                    bind:value={renameValue}
+                    placeholder="请输入新项目名称"
+                    class="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none transition-colors placeholder:text-zinc-700 focus:border-indigo-500/50"
+                    style="background: var(--theme-search-box-bg); color: var(--theme-search-box-text)"
+                    onkeydown={(e) => e.key === 'Enter' && handleRename()}
+                />
+            </div>
+            <div class="flex justify-end gap-2">
+                <button
+                    onclick={() => (renameModal = false)}
+                    class="h-7 rounded-md bg-(--theme-card-bg) px-3 text-xs text-(--theme-muted-text) transition-colors hover:bg-(--theme-card-bg-focused)"
+                >
+                    取消
+                </button>
+                <button
+                    disabled={!renameValue.trim()}
+                    onclick={handleRename}
+                    class="h-7 rounded-md px-3 text-xs transition-all hover:brightness-125 disabled:opacity-40 disabled:pointer-events-none"
+                    style="background: var(--theme-btn-bg); color: var(--theme-btn-text);"
+                >
+                    保存
+                </button>
+            </div>
+        </div>
+    </Modal>
+{/if}
+
+<!-- Export Modal -->
+{#if exportModal}
+    <Modal open={true} onclose={() => (exportModal = false)}>
+        {#snippet title()}
+            导出项目
+        {/snippet}
+        <div class="space-y-4">
+            <p class="mb-2 text-xs text-zinc-500">选择需要导出的环节数据。</p>
+            <div class="space-y-1.5">
+                {#each getPhaseOrder() as phase}
+                    <label
+                        class="flex cursor-pointer items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-white/5"
+                    >
+                        <input
+                            type="checkbox"
+                            checked={exportSelections[phase]}
+                            onchange={() => toggleExportPhase(phase)}
+                            class="size-4 accent-indigo-500"
+                        />
+                        <span>{PHASE_LABELS[phase]}</span>
+                    </label>
+                {/each}
+            </div>
+            <label
+                class="flex cursor-pointer items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-white/5"
+            >
+                <input type="checkbox" bind:checked={exportResult} class="size-4 accent-indigo-500" />
+                <span>包含结果分析</span>
+            </label>
+            <div class="flex justify-end gap-2">
+                <button
+                    onclick={() => (exportModal = false)}
+                    class="h-7 rounded-md bg-(--theme-card-bg) px-3 text-xs text-(--theme-muted-text) transition-colors hover:bg-(--theme-card-bg-focused)"
+                >
+                    取消
+                </button>
+                <button
+                    onclick={handleExport}
+                    class="h-7 rounded-md px-3 text-xs transition-all hover:brightness-125"
+                    style="background: var(--theme-btn-bg); color: var(--theme-btn-text);"
+                >
+                    导出
+                </button>
+            </div>
+        </div>
+    </Modal>
+{/if}
+
+<!-- Clone Modal -->
+{#if cloneModal}
+    <Modal open={true} onclose={() => (cloneModal = false)}>
+        {#snippet title()}
+            复制项目
+        {/snippet}
+        <div class="space-y-4">
+            <div>
+                <label for="clone-name" class="mb-1 block text-xs text-zinc-500">新项目名称</label>
+                <input
+                    id="clone-name"
+                    bind:value={cloneName}
+                    placeholder="请输入新项目名称"
+                    class="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none transition-colors placeholder:text-zinc-700 focus:border-indigo-500/50"
+                    style="background: var(--theme-search-box-bg); color: var(--theme-search-box-text)"
+                    onkeydown={(e) => e.key === 'Enter' && handleClone()}
+                />
+            </div>
+            <div>
+                <p class="mb-2 text-xs text-zinc-500">选择需要复制到新项目的环节数据。</p>
+                <div class="space-y-1.5">
+                    {#each getPhaseOrder() as phase}
+                        <label
+                            class="flex cursor-pointer items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-white/5"
+                        >
+                            <input
+                                type="checkbox"
+                                checked={cloneSelections[phase]}
+                                onchange={() => toggleClonePhase(phase)}
+                                class="size-4 accent-indigo-500"
+                            />
+                            <span>{PHASE_LABELS[phase]}</span>
+                        </label>
+                    {/each}
+                </div>
+            </div>
+            <label
+                class="flex cursor-pointer items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-white/5"
+            >
+                <input type="checkbox" bind:checked={cloneResult} class="size-4 accent-indigo-500" />
+                <span>包含结果分析和 DPS 排名</span>
+            </label>
+            <div class="flex justify-end gap-2">
+                <button
+                    onclick={() => (cloneModal = false)}
+                    class="h-7 rounded-md bg-(--theme-card-bg) px-3 text-xs text-(--theme-muted-text) transition-colors hover:bg-(--theme-card-bg-focused)"
+                >
+                    取消
+                </button>
+                <button
+                    disabled={!cloneName.trim()}
+                    onclick={handleClone}
+                    class="h-7 rounded-md px-3 text-xs transition-all hover:brightness-125 disabled:opacity-40 disabled:pointer-events-none"
+                    style="background: var(--theme-btn-bg); color: var(--theme-btn-text);"
+                >
+                    复制
+                </button>
+            </div>
+        </div>
+    </Modal>
+{/if}
+
+<!-- Delete Modal -->
+{#if deleteModal}
+    <Modal open={true} onclose={() => (deleteModal = false)}>
+        {#snippet title()}
+            删除项目
+        {/snippet}
+        <div class="space-y-4">
+            <p class="text-sm text-zinc-400">
+                确定要删除 <span class="font-semibold text-(--theme-layout-text)">{deleteName}</span> 吗？此操作不可恢复。
+            </p>
+            <div class="flex justify-end gap-2">
+                <button
+                    onclick={() => (deleteModal = false)}
+                    class="h-7 rounded-md bg-(--theme-card-bg) px-3 text-xs text-(--theme-muted-text) transition-colors hover:bg-(--theme-card-bg-focused)"
+                >
+                    取消
+                </button>
+                <button
+                    onclick={handleDelete}
+                    class="h-7 rounded-md bg-red-600 px-3 text-xs text-white transition-all hover:brightness-110 disabled:opacity-40 disabled:pointer-events-none"
+                >
+                    删除
+                </button>
+            </div>
+        </div>
+    </Modal>
+{/if}

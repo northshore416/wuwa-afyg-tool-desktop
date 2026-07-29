@@ -1,0 +1,61 @@
+node_modules
+
+# Output
+.output
+.vercel
+.netlify
+.wrangler
+/.svelte-kit
+/build
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env
+.env
+.env.*
+!.env.example
+!.env.test
+
+# Vite
+vite.config.js.timestamp-*
+vite.config.ts.timestamp-*
+
+# Temp
+.tmp/
+.tmp
+*Tempopencode*.*
+
+# Test Pages
+routes/test
+
+# Log
+*.log
+
+# Secret
+AGENTS.md
+.opencode/
+
+.desktop-data/
+release/
+build/
+.kernel/
+
+# Local package/cache artifacts
+outputs/
+*.zip
+*.7z
+*.rar
+*.asar.backup*
+*.blockmap
+latest.yml
+builder-*.yml
+builder-*.yaml
+
+# Local databases and runtime data
+*.db
+*.sqlite
+*.sqlite3
+*.db-shm
+*.db-wal

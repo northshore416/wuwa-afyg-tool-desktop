@@ -1,0 +1,101 @@
+{
+    "id": "light",
+    "name": "白天",
+    "elementColors": {
+        "冷凝": "#0284c7",
+        "热熔": "#ea580c",
+        "导电": "#7c3aed",
+        "气动": "#059669",
+        "衍射": "#ca8a04",
+        "湮灭": "#db2777"
+    },
+    "components": {
+        "avatar": {
+            "backgroundImage": "#e2e8f0",
+            "backgroundImageFocused": "#cbd5e1",
+            "textColor": "#1e293b",
+            "textColorFocused": "#0f172a"
+        },
+        "tabs": {
+            "backgroundImage": "#f1f5f9",
+            "backgroundImageFocused": "#ffffff",
+            "textColor": "#475569",
+            "textColorFocused": "#0f172a"
+        },
+        "sidebar": {
+            "backgroundImage": "#f1f5f9",
+            "textColor": "#1e293b"
+        },
+        "btn": {
+            "backgroundImage": "linear-gradient(135deg, #6366f1, #8b5cf6)",
+            "backgroundImageFocused": "#818cf8",
+            "textColor": "#ffffff",
+            "textColorFocused": "#ffffff"
+        },
+        "search-box": {
+            "backgroundImage": "#f1f5f9",
+            "backgroundImageFocused": "#ffffff",
+            "textColor": "#1e293b",
+            "textColorFocused": "#0f172a"
+        },
+        "modal": {
+            "backgroundImage": "#ffffff",
+            "textColor": "#1e293b"
+        },
+        "context-menu": {
+            "backgroundImage": "rgba(255,255,255,0.95)",
+            "backgroundImageFocused": "rgba(241,245,249,0.96)",
+            "textColor": "#1e293b",
+            "textColorFocused": "#0f172a"
+        },
+        "toast": {
+            "backgroundImage": "rgba(255,255,255,0.95)",
+            "textColor": "#1e293b"
+        },
+        "toast-top": {
+            "backgroundImage": "#ffffff",
+            "textColor": "#1e293b"
+        },
+        "timeline": {
+            "backgroundImage": "#f8fafc",
+            "textColor": "#1e293b"
+        },
+        "layout": {
+            "backgroundImage": "#f8fafc",
+            "textColor": "#1e293b"
+        },
+        "card": {
+            "backgroundImage": "#ffffff",
+            "backgroundImageFocused": "#f8fafc",
+            "textColor": "#1e293b",
+            "borderColor": "#e2e8f0"
+        },
+        "input": {
+            "backgroundImage": "#f8fafc",
+            "backgroundImageFocused": "#ffffff",
+            "textColor": "#1e293b",
+            "textColorFocused": "#0f172a",
+            "borderColor": "#cbd5e1",
+            "borderColorFocused": "#6366f1"
+        },
+        "accent": {
+            "backgroundImage": "#6366f1",
+            "backgroundImageFocused": "#4f46e5",
+            "textColor": "#4f46e5",
+            "borderColor": "rgba(99,102,241,0.3)"
+        },
+        "divider": {
+            "borderColor": "#e2e8f0"
+        },
+        "overlay": {
+            "backgroundImage": "rgba(15,23,42,0.3)"
+        },
+        "muted": {
+            "textColor": "#64748b"
+        },
+        "watermark": {
+            "backgroundImage": "rgba(255,255,255,0.5)",
+            "textColor": "rgba(0,0,0,0.06)"
+        }
+    }
+}
