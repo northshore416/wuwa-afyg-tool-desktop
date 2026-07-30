@@ -7,7 +7,7 @@ import {
     transformElementIcons,
     transformWeaponTypeIcons,
     transformEchoSetIcons
-} from '$lib/api/utils'
+} from '$lib/desktop-extension/icon-transforms'
 import type { NanokaCharacter, NanokaWeapon, NanokaEcho, NanokaSonata } from '$lib/api/types'
 import { augmentUiButtonIconPairs } from '$lib/desktop-extension/ui-button-icons'
 

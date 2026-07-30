@@ -12,7 +12,6 @@
         renameProject,
         deleteProject,
         updateTeam,
-        updateTeamAndConfig,
         updateTimeline,
         updateCalculation,
         updateConfig,
@@ -51,9 +50,11 @@
     import { getConfig, init as initConfig } from '$lib/components/page/home/config/config.store.svelte'
     import {
         applyEchoImportPayload,
+        type EchoImportBridge,
         type EchoImportBridgeResult,
         type EchoImportPayload
     } from '$lib/desktop-extension/echo-import'
+    import { updateTeamAndConfig } from '$lib/desktop-extension/project-updater'
     import favicon from '$lib/assets/favicon.svg'
     import ProjectSidebar from '$lib/components/page/home/project-sidebar.svelte'
     import TeamConfig from '$lib/components/page/home/team-config.svelte'
@@ -184,7 +185,8 @@
 
     function installEchoImportBridge() {
         if (!browser) return
-        window.WuwaDesktopEchoImport = {
+        const desktopWindow = window as Window & { WuwaDesktopEchoImport?: EchoImportBridge }
+        desktopWindow.WuwaDesktopEchoImport = {
             version: 1,
             getActiveTeam: () => getActiveProject()?.team.map((slot) => slot.character) ?? [],
             importEchoes
@@ -198,8 +200,8 @@
 
         return () => {
             window.removeEventListener('message', onMessage)
-            if (window.WuwaDesktopEchoImport?.importEchoes === importEchoes) {
-                delete window.WuwaDesktopEchoImport
+            if (desktopWindow.WuwaDesktopEchoImport?.importEchoes === importEchoes) {
+                delete desktopWindow.WuwaDesktopEchoImport
             }
         }
     }

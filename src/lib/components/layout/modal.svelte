@@ -82,7 +82,7 @@
             bind:this={modalEl}
             class={[
                 'relative max-h-[85vh] min-w-80 overflow-y-auto rounded-xl p-6 shadow-2xl',
-                'text-[var(--theme-modal-text)]',
+                'text-(--theme-modal-text)',
                 className || ''
             ]
                 .filter(Boolean)
@@ -98,10 +98,10 @@
                 class="absolute right-3 top-3 rounded p-1 text-white/50 transition-colors hover:bg-white/10 hover:text-white"
                 aria-label="Close"
             >
-                <Icon icon="mdi:close" class="size-[18px]" />
+                <Icon icon="mdi:close" class="size-4.5" />
             </button>
             <div
-                class="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize z-10 transition-colors hover:bg-indigo-500/50 rounded-r-xl"
+                class="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize z-10 transition-colors hover:bg-(--theme-accent-bg)/50 rounded-r-xl"
                 onmousedown={handleResizeStart}
             ></div>
             {#if title}

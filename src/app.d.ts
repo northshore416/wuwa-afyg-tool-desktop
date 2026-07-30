@@ -1,12 +1,6 @@
-import type { EchoImportBridge } from '$lib/desktop-extension/echo-import'
-
 // See https://svelte.dev/docs/kit/types#app.d.ts
 // for information about these interfaces
 declare global {
-    interface Window {
-        WuwaDesktopEchoImport?: EchoImportBridge
-    }
-
     namespace App {
         // interface Error {}
         // interface Locals {}
