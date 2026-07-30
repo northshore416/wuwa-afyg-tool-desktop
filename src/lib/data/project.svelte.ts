@@ -193,6 +193,22 @@ export async function updateTeam(team: [CharSlot, CharSlot, CharSlot]) {
     await persist()
 }
 
+export const updateTeamAndConfig = async (team: [CharSlot, CharSlot, CharSlot], config: ConfigState): Promise<void> => {
+    const project = projects.find((item) => item.id === activeId)
+    if (!project) return
+
+    const oldKey = getTeamKeyFromTeam(project.team)
+    project.team = team
+    project.phases.config.data = config
+    const newKey = getTeamKeyFromTeam(team)
+    if (project.lockedTeamKey && oldKey !== newKey) {
+        project.lockedTeamKey = undefined
+        project.lockedTeamNames = undefined
+    }
+
+    await persist()
+}
+
 export async function updateTimeline(data: TimelineData) {
     const project = projects.find((p) => p.id === activeId)
     if (!project) return

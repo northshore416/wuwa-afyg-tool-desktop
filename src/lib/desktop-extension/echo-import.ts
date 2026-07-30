@@ -66,6 +66,7 @@ const STAT_ALIASES: Record<string, string> = {
     攻击百分比: '攻击%',
     攻击力百分比: '攻击%',
     大攻击: '攻击%',
+    攻击力: '攻击',
     攻击: '攻击',
     小攻击: '攻击',
     生命百分比: '生命%',
@@ -76,6 +77,7 @@ const STAT_ALIASES: Record<string, string> = {
     防御百分比: '防御%',
     防御力百分比: '防御%',
     大防御: '防御%',
+    防御力: '防御',
     防御: '防御',
     小防御: '防御',
     治疗: '治疗加成',
@@ -154,6 +156,34 @@ function statName(input: ImportStatInput | null | undefined): string {
     return input.type ?? input.name ?? input.label ?? ''
 }
 
+const percentageVariant = (label: string): string | null => {
+    if (label === '攻击' || label === '生命' || label === '防御') return `${label}%`
+    return null
+}
+
+const hasPercentageUnit = (input: ImportStatInput): boolean => {
+    if (typeof input === 'string') return input.includes('%') || input.includes('百分比')
+    return (
+        input.unit?.includes('%') === true ||
+        (typeof input.value === 'string' && input.value.includes('%')) ||
+        statName(input).includes('%') ||
+        statName(input).includes('百分比')
+    )
+}
+
+const resolveStatLabel = (input: ImportStatInput, kind: 'main' | 'sub', cost: number | undefined): string | null => {
+    const matched = STAT_LABELS.get(cleanKey(statName(input)))
+    if (!matched) return null
+
+    const percentage = percentageVariant(matched)
+    if (!percentage) return matched
+    if (hasPercentageUnit(input)) return percentage
+    if (kind === 'main' && cost && MAIN_STAT_POOL[cost]?.some((option) => option.label === percentage)) {
+        return percentage
+    }
+    return matched
+}
+
 function statUnit(label: string, kind: 'main' | 'sub', cost?: number): string {
     if (kind === 'sub') return SUBSTAT_OPTIONS.find((o) => o.label === label)?.unit ?? ''
     if (cost) return MAIN_STAT_POOL[cost]?.find((o) => o.label === label)?.unit ?? ''
@@ -168,7 +198,7 @@ function normalizeStat(
 ): EchoStat | null {
     if (!input) return null
     const rawName = statName(input)
-    const label = STAT_LABELS.get(cleanKey(rawName))
+    const label = resolveStatLabel(input, kind, cost)
     if (!label) {
         warnings.push(`未识别词条：${rawName}`)
         return null
@@ -183,7 +213,7 @@ function normalizeStat(
             : SUBSTAT_OPTIONS.find((o) => o.label === label)?.tiers.at(-1)
 
     const value = explicitValue ?? fallback ?? 0
-    const unit = typeof input === 'string' ? statUnit(label, kind, cost) : (input.unit ?? statUnit(label, kind, cost))
+    const unit = typeof input === 'string' ? statUnit(label, kind, cost) : input.unit || statUnit(label, kind, cost)
     return { type: label, value, unit }
 }
 
@@ -193,8 +223,12 @@ function findCharacterIndex(item: EchoImportCharacter, team: [CharSlot, CharSlot
     const key = cleanKey(rawName)
     const exact = team.findIndex((slot) => slot.character && cleanKey(slot.character) === key)
     if (exact !== -1) return exact
-    const partial = team.findIndex((slot) => slot.character && cleanKey(slot.character).includes(key))
-    return partial !== -1 ? partial : fallback
+    const partial = team.findIndex((slot) => {
+        if (!slot.character) return false
+        const teamKey = cleanKey(slot.character)
+        return teamKey.includes(key) || key.includes(teamKey)
+    })
+    return partial
 }
 
 function normalizeEchoSlot(
@@ -204,10 +238,10 @@ function normalizeEchoSlot(
 ): { slot: EchoSlotConfig; name: string | null } {
     const cost = parseCost(echo.cost, previous.cost || 0)
     const second = SECOND_MAIN_STAT[cost] ? SECOND_MAIN_STAT[cost] : null
-    const substats = (echo.substats ?? [])
+    const normalizedSubstats = (echo.substats ?? [])
         .map((item) => normalizeStat(item, 'sub', warnings))
         .filter((item): item is EchoStat => item !== null)
-        .slice(0, 5)
+    const substats = [...new Map(normalizedSubstats.map((item) => [item.type, item])).values()].slice(0, 5)
 
     return {
         name: echo.name ?? echo.echoName ?? null,

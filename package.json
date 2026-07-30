@@ -14,7 +14,9 @@
         "format": "prettier --write .",
         "generate-icons": "node scripts/generate-icons.mjs",
         "desktop:dev": "node scripts/desktop-dev.mjs",
-        "desktop:build": "cross-env DEPLOY_TARGET=desktop node scripts/run-pnpm.mjs run build && electron-builder"
+        "desktop:build": "cross-env DEPLOY_TARGET=desktop node scripts/run-pnpm.mjs run build && electron-builder",
+        "server:build": "cross-env DEPLOY_TARGET=server pnpm run build",
+        "server:start": "cross-env HOST=127.0.0.1 PORT=39818 node build-server/index.js"
     },
     "devDependencies": {
         "@iconify-json/mdi": "^1.2.3",

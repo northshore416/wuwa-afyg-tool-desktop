@@ -20,7 +20,7 @@
     import { getCharIconMap, elementColor } from '../timeline/timeline.store.svelte'
     import EnemyPanel from './enemy-panel.svelte'
     import RandomEnhanceModal from './random-enhance-modal.svelte'
-    import { slide } from 'svelte/transition'
+    import { untrack } from 'svelte'
     import Icon from '@iconify/svelte'
 
     interface Props {
@@ -39,7 +39,9 @@
     let dragState = $state<{ ci: number; si: number; idx: number; dropIdx: number; outside: boolean } | null>(null)
 
     $effect(() => {
-        init(data, locked)
+        const nextData = data
+        const nextLocked = locked
+        untrack(() => init(nextData, nextLocked))
     })
 
     let config = $derived(getConfig())
@@ -433,7 +435,6 @@
                                                 <div
                                                     data-substat
                                                     role="listitem"
-                                                    transition:slide={{ duration: 200 }}
                                                     class={[
                                                         'flex items-center gap-2 rounded px-2 py-1.5 transition-all touch-none',
                                                         'cursor-grab active:cursor-grabbing',
