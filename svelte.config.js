@@ -7,8 +7,8 @@ const deployTarget = process.env.DEPLOY_TARGET || 'vercel'
 const adapter =
     deployTarget === 'cloudflare'
         ? cloudflareAdapter()
-        : deployTarget === 'desktop'
-          ? nodeAdapter({ out: 'build' })
+        : deployTarget === 'desktop' || deployTarget === 'server'
+          ? nodeAdapter({ out: deployTarget === 'server' ? 'build-server' : 'build' })
           : vercelAdapter()
 
 /** @type {import('@sveltejs/kit').Config} */

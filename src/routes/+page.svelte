@@ -12,6 +12,7 @@
         renameProject,
         deleteProject,
         updateTeam,
+        updateTeamAndConfig,
         updateTimeline,
         updateCalculation,
         updateConfig,
@@ -63,6 +64,7 @@
     import Result from '$lib/components/page/home/result/result.svelte'
     import PhaseTabs from '$lib/components/page/home/phase-tabs.svelte'
     import QuickLookup from '$lib/components/page/home/calculation/quick-lookup.svelte'
+    import YGKitPanel from '$lib/components/page/home/ygkit-panel.svelte'
     import Modal from '$lib/components/layout/modal.svelte'
     import Icon from '@iconify/svelte'
 
@@ -71,6 +73,7 @@
     let showResult = $state(false)
     let dataUpdating = $state(false)
     let versionUpdating = $state(false)
+    let showYGKit = $state(false)
 
     let sidebarWidth = $state(240)
     let sidebarDragging = $state(false)
@@ -139,50 +142,48 @@
         loadThemes()
         loadProjects()
         loadIcons()
+        if (new URLSearchParams(window.location.search).get('ygkit') === 'login') showYGKit = true
     })
 
     let projects = $derived(getProjects())
     let activeId = $derived(getActiveId())
     let activeProject = $derived(getActiveProject())
 
-    function installEchoImportBridge() {
-        if (!browser) return
-
-        const importEchoes = async (payload: EchoImportPayload): Promise<EchoImportBridgeResult> => {
-            const project = getActiveProject()
-            if (!project) {
-                return { ok: false, applied: 0, warnings: [], message: '当前没有打开的项目' }
-            }
-            if (project.phases.config.locked) {
-                const message = '词条配置已锁定，请先解锁后再导入'
-                addToast(message, 'info')
-                return { ok: false, applied: 0, warnings: [], message }
-            }
-            if (!payload?.characters?.length) {
-                return { ok: false, applied: 0, warnings: ['缺少 characters 数据'], message: '导入数据为空' }
-            }
-
-            const result = applyEchoImportPayload(
-                payload,
-                project.team,
-                project.phases.config.data as ConfigState | null
-            )
-            if (result.applied === 0) {
-                return { ok: false, applied: 0, warnings: result.warnings, message: '没有可导入的声骸数据' }
-            }
-
-            await updateTeam(result.team)
-            await updateConfig(result.config)
-            initConfig(result.config, false)
-            activePhase = 'config'
-            showResult = false
-
-            const message = `已导入 ${result.applied} 个声骸词条配置`
-            addToast(message, 'success')
-            if (result.warnings.length > 0) addToast(`导入完成，但有 ${result.warnings.length} 条提示`, 'info')
-            return { ok: true, applied: result.applied, warnings: result.warnings, message }
+    const importEchoes = async (payload: EchoImportPayload): Promise<EchoImportBridgeResult> => {
+        const project = getActiveProject()
+        if (!project) {
+            return { ok: false, applied: 0, warnings: [], message: '当前没有打开的项目' }
+        }
+        if (project.phases.config.locked) {
+            const message = '词条配置已锁定，请先解锁后再导入'
+            addToast(message, 'info')
+            return { ok: false, applied: 0, warnings: [], message }
+        }
+        if (!payload?.characters?.length) {
+            return { ok: false, applied: 0, warnings: ['缺少 characters 数据'], message: '导入数据为空' }
         }
 
+        const result = applyEchoImportPayload(payload, project.team, project.phases.config.data as ConfigState | null)
+        if (result.applied === 0) {
+            return { ok: false, applied: 0, warnings: result.warnings, message: '没有可导入的声骸数据' }
+        }
+
+        await updateTeamAndConfig(result.team, result.config)
+        activePhase = 'config'
+        showResult = false
+
+        const importedCharacters = (payload.characters ?? [])
+            .map((item) => item.character ?? item.name ?? item.role)
+            .filter(Boolean)
+            .join('、')
+        const message = `已为${importedCharacters ? ` ${importedCharacters} ` : '当前队伍'}导入 ${result.applied} 个声骸词条配置`
+        addToast(message, 'success')
+        if (result.warnings.length > 0) addToast(`导入完成，但有 ${result.warnings.length} 条提示`, 'info')
+        return { ok: true, applied: result.applied, warnings: result.warnings, message }
+    }
+
+    function installEchoImportBridge() {
+        if (!browser) return
         window.WuwaDesktopEchoImport = {
             version: 1,
             getActiveTeam: () => getActiveProject()?.team.map((slot) => slot.character) ?? [],
@@ -655,6 +656,13 @@
                             {versionUpdating ? '更新中...' : '更新版本'}
                         </button>
                         <button
+                            onclick={() => (showYGKit = true)}
+                            class="inline-flex items-center gap-1.5 rounded-lg border border-(--theme-card-border) bg-(--theme-card-bg) px-4 py-2 text-sm font-medium text-(--theme-card-text) transition-colors hover:bg-(--theme-card-bg-focused)"
+                        >
+                            <Icon icon="mdi:link-variant" class="size-4" />
+                            YGKIT</button
+                        >
+                        <button
                             onclick={() => goto('/api-test')}
                             class="inline-flex items-center gap-1.5 rounded-lg border border-(--theme-card-border) bg-(--theme-card-bg) px-4 py-2 text-sm font-medium text-(--theme-card-text) transition-colors hover:bg-(--theme-card-bg-focused)"
                         >
@@ -819,6 +827,13 @@
                 {/if}
                 <div class="flex-1"></div>
                 <button
+                    onclick={() => (showYGKit = true)}
+                    class="inline-flex items-center gap-1.5 rounded-lg border border-(--theme-sidebar-text)/20 px-3 py-1.5 text-sm text-(--theme-sidebar-text) transition-colors hover:border-(--theme-sidebar-text)/40"
+                >
+                    <Icon icon="mdi:link-variant" class="size-4 shrink-0" />
+                    YGKIT
+                </button>
+                <button
                     onclick={handleRefreshData}
                     disabled={dataUpdating}
                     class="inline-flex items-center gap-1.5 rounded-lg border border-(--theme-sidebar-text)/20 px-3 py-1.5 text-sm text-(--theme-sidebar-text) transition-colors hover:border-(--theme-sidebar-text)/40 disabled:opacity-40 disabled:pointer-events-none"
@@ -858,6 +873,8 @@
         onclose={() => (showLookup = false)}
     />
 {/if}
+
+<YGKitPanel open={showYGKit} onclose={() => (showYGKit = false)} onimport={importEchoes} />
 
 <svelte:head><title>椰果工具箱</title></svelte:head>
 
