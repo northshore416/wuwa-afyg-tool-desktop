@@ -34,7 +34,7 @@ import {
 import { getEffectMultiplier, getEffectBurstMultiplier, getTuneDamage } from '$lib/consts/tune-data'
 import { parseValueString, sumRatioNum } from '$lib/consts/parse-value-string'
 import { addToast } from '$lib/data/toast.svelte'
-import { getOpBlockFallbackLabel, getOpBlockKeyLabel, parseTextAxisTimeline } from '$lib/desktop-extension/text-axis'
+import { getOpBlockFallbackLabel, getOpBlockKeyLabel, parseTextAxisTimeline } from '$lib/timeline/text-axis'
 import { setCharElements } from '$lib/data/char-elements.svelte'
 
 // ── Core Data ──

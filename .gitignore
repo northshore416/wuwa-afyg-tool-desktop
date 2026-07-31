@@ -6,7 +6,6 @@ node_modules
 .netlify
 .wrangler
 /.svelte-kit
-/build
 /build-server
 
 # OS
@@ -39,23 +38,15 @@ routes/test
 AGENTS.md
 .opencode/
 
-.desktop-data/
 .ygkit-data/
+.server-data/
 /YGKIT-WINDOWS-DEPLOY.txt
-release/
-build/
-.kernel/
 
 # Local package/cache artifacts
 outputs/
 *.zip
 *.7z
 *.rar
-*.asar.backup*
-*.blockmap
-latest.yml
-builder-*.yml
-builder-*.yaml
 
 # Local databases and runtime data
 *.db

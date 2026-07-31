@@ -1,9 +1,12 @@
-import type { EchoImportPayload } from '$lib/desktop-extension/echo-import'
+import type { EchoImportPayload } from '$lib/ygkit/echo-import'
 
 export interface YGKitUser {
     id: number
     subject: string
     uids: string[]
+    displayName: string
+    avatarUrl: string
+    isAdmin: boolean
 }
 
 export interface YGKitAuthResponse {

@@ -1,3 +1,5 @@
+from time import time
+
 from gsuid_core.sv import SL, Plugins, SV
 from gsuid_core.bot import Bot
 from gsuid_core.models import Event
@@ -6,6 +8,25 @@ from .config import settings
 from .ticket_client import issue_ticket
 from .xwuid_adapter import get_waves_bind
 from . import routes as _routes
+
+
+def _get_qq_profile(ev: Event) -> dict[str, str]:
+    raw_sender = getattr(ev, "sender", None)
+    sender = raw_sender if isinstance(raw_sender, dict) else {}
+    display_name = str(
+        sender.get("card")
+        or sender.get("nickname")
+        or sender.get("name")
+        or ev.user_id
+    ).strip()
+    avatar_url = str(sender.get("avatar") or sender.get("avatar_url") or "").strip()
+    if not avatar_url and str(ev.user_id).isdigit():
+        avatar_url = f"https://q1.qlogo.cn/g?b=qq&nk={ev.user_id}&s=640&t={int(time())}"
+    return {
+        "displayName": display_name[:80],
+        "avatarUrl": avatar_url[:500] if avatar_url.startswith("https://") else "",
+    }
+
 
 if "YGKIT" not in SL.plugins:
     Plugins(name="YGKIT", force_prefix=["yg"], allow_empty_prefix=False)
@@ -28,7 +49,7 @@ async def ygkit_login(bot: Bot, ev: Event):
             return
 
         subject = f"qq:{ev.bot_id}:{ev.user_id}"
-        ticket = await issue_ticket(subject, uids)
+        ticket = await issue_ticket(subject, uids, _get_qq_profile(ev))
         message = (
             "椰果工具箱登录凭证（一次性、短时有效）：\n"
             f"{ticket['ticket']}\n\n"

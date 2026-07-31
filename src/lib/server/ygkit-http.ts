@@ -43,3 +43,9 @@ export const requireUser = (cookies: Cookies) => {
     if (!user) error(401, 'Not authenticated')
     return user
 }
+
+export const requireAdmin = (cookies: Cookies) => {
+    const user = requireUser(cookies)
+    if (!user.isAdmin) error(403, 'Administrator required')
+    return user
+}

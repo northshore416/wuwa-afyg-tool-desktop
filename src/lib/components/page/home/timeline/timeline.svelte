@@ -75,7 +75,8 @@
     import SkillPicker from './skill-picker.svelte'
     import NonDirectPicker from './non-direct-picker.svelte'
     import DamageList from './damage-list.svelte'
-    import { getOpBlockFallbackLabel } from '$lib/desktop-extension/text-axis'
+    import { getOpBlockFallbackLabel } from '$lib/timeline/text-axis'
+    import { fallbackIcon } from '$lib/utils/icons'
     import Modal from '$lib/components/layout/modal.svelte'
     import Icon from '@iconify/svelte'
 
@@ -306,7 +307,7 @@
                     >
                         <!-- Sticky label column -->
                         <div
-                            class="sticky left-0 z-35 w-20 h-full bg-(--theme-timeline-bg)/80 border-r backdrop-blur-sm flex items-center justify-center"
+                            class="sticky left-0 z-35 w-20 h-full bg-(--theme-timeline-bg)/60 border-r backdrop-blur-sm flex items-center justify-center"
                             style="border-right-color: var(--theme-divider-border);"
                         >
                             {#if i < getTRACKS().length - 1}
@@ -323,6 +324,7 @@
                                             src={getCharIconMap()[name]}
                                             alt={name}
                                             draggable="false"
+                                            use:fallbackIcon={'/icons/placeholder-character.svg'}
                                             class="h-full w-full object-cover"
                                         />
                                     {/if}
@@ -468,7 +470,7 @@
                                                         ?.echoes?.[0]?.name}
                                                     <span
                                                         class="text-[11px] font-bold leading-tight border border-dashed rounded px-1.5 py-px"
-                                                        style="color: var(--theme-element-{hit.element}, #ef4444); border-color: var(--theme-element-{hit.element}, #ef4444);"
+                                                        style="color: var(--theme-element-{hit.element}, #888); border-color: var(--theme-element-{hit.element}, #888);"
                                                     >
                                                         {(dmg.sourceType === 'ref' && hit.character
                                                             ? `[${hit.character}]`
@@ -486,12 +488,12 @@
                                                 }) as nd}
                                                     {@const c =
                                                         nd.category === '响应'
-                                                            ? '#22c55e'
+                                                            ? 'var(--theme-accent-bg)'
                                                             : nd.category === '处决'
-                                                              ? '#ffffff'
+                                                              ? 'var(--theme-accent-text)'
                                                               : (NON_DIRECT_ELEMENT as Record<string, string>)[nd.name]
-                                                                ? `var(--theme-element-${(NON_DIRECT_ELEMENT as Record<string, string>)[nd.name]}, #ef4444)`
-                                                                : '#ef4444'}
+                                                                ? `var(--theme-element-${(NON_DIRECT_ELEMENT as Record<string, string>)[nd.name]}, #888)`
+                                                                : 'var(--theme-accent-bg)'}
                                                     <span
                                                         class="text-[11px] font-bold leading-tight border border-dashed rounded px-1.5 py-px"
                                                         style="color: {c}; border-color: {c}; opacity: {nd.category ===
@@ -620,7 +622,7 @@
                         bind:value={textImportValue}
                         rows="8"
                         placeholder={'散华: intro a e q r outro\n今汐: A,E,Q,R,闪避\n维里奈 intro ae q'}
-                        class="w-full resize-y rounded-lg border border-(--theme-input-border) bg-(--theme-input-bg) px-3 py-2 text-sm text-(--theme-input-text) outline-none transition-colors placeholder:text-(--theme-input-text)/35 focus:border-indigo-500/50"
+                        class="w-full resize-y rounded-lg border border-(--theme-input-border) bg-(--theme-input-bg) px-3 py-2 text-sm text-(--theme-input-text) outline-none transition-colors placeholder:text-(--theme-input-text)/35 focus:border-(--theme-accent-bg)/50"
                     ></textarea>
                     <p class="text-xs leading-relaxed text-(--theme-modal-text)/50">
                         每行以当前队伍角色名开头，后面写动作。支持 A/E/Q/R
@@ -628,7 +630,12 @@
                     </p>
                 </div>
                 <label class="flex items-center gap-2 text-sm text-(--theme-modal-text)/70">
-                    <input type="checkbox" bind:checked={textImportReplace} class="size-4 accent-indigo-500" />
+                    <input
+                        type="checkbox"
+                        bind:checked={textImportReplace}
+                        class="size-4"
+                        style="accent-color: var(--theme-accent-bg, #6366f1)"
+                    />
                     覆盖当前排轴
                 </label>
                 {#if textImportWarnings.length > 0}

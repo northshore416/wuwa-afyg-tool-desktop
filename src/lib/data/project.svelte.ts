@@ -260,7 +260,7 @@ export async function setActiveProject(id: string) {
     await dbSet(ACTIVE_KEY, id)
 }
 
-export function importProjects(imported: Project[]) {
+export async function importProjects(imported: Project[]): Promise<Project[]> {
     const existingIds = new Set(projects.map((p) => p.id))
     const toAdd: Project[] = []
     for (const item of imported) {
@@ -275,7 +275,12 @@ export function importProjects(imported: Project[]) {
         toAdd.push(normalized)
     }
     projects = [...projects, ...toAdd]
-    persist()
+    if (toAdd.length > 0) {
+        activeId = toAdd[0].id
+        await dbSet(ACTIVE_KEY, activeId)
+    }
+    await persist()
+    return toAdd
 }
 
 export async function lockPhase(phase: PhaseKey) {

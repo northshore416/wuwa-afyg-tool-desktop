@@ -13,8 +13,11 @@ class TicketResponse(TypedDict):
     loginUrl: str
 
 
-def _post_ticket(subject: str, uids: list[str]) -> TicketResponse:
-    body = json.dumps({"subject": subject, "uids": uids}).encode("utf-8")
+def _post_ticket(subject: str, uids: list[str], profile: dict[str, str]) -> TicketResponse:
+    body = json.dumps(
+        {"subject": subject, "uids": uids, "profile": profile},
+        ensure_ascii=False,
+    ).encode("utf-8")
     request = urllib.request.Request(
         f"{settings.server_url}/api/ygkit/internal/tickets",
         data=body,
@@ -35,5 +38,9 @@ def _post_ticket(subject: str, uids: list[str]) -> TicketResponse:
         raise RuntimeError(f"无法连接椰果服务：{error.reason}") from error
 
 
-async def issue_ticket(subject: str, uids: list[str]) -> TicketResponse:
-    return await asyncio.to_thread(_post_ticket, subject, uids)
+async def issue_ticket(
+    subject: str,
+    uids: list[str],
+    profile: dict[str, str],
+) -> TicketResponse:
+    return await asyncio.to_thread(_post_ticket, subject, uids, profile)

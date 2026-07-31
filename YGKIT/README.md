@@ -22,6 +22,10 @@ YGKIT_READER_TOKEN=<与椰果服务相同的读取密钥>
 重启 gsuid-core。用户私聊机器人发送 `yg登录`，插件会读取该 QQ 在 XWUID 中
 绑定的 UID，并签发一个只能使用一次、5 分钟内有效的 ticket。
 
+签发 ticket 时，插件会同时从 gsuid-core 的事件 `sender` 中读取 QQ 群名片或昵称；头像优先使用
+适配器提供的地址，否则根据 QQ 号使用 QQ 头像地址。资料由插件签名后发送到椰果服务，浏览器不能
+自行修改受信任的 QQ 身份。
+
 配置既可以由启动进程直接注入，也可以写入 gsuid-core 工作目录的 `.env`，或写入
 `plugins/YGKIT/.env`。YGKIT 只会从这些文件读取以 `YGKIT_` 开头的变量；修改后
 必须完整重启 gsuid-core。

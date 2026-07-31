@@ -16,32 +16,50 @@
     import { simulateEnhancement } from '$lib/consts/substat-roll-data'
     import { addToast } from '$lib/data/toast.svelte'
     import type { CharSlot } from '$lib/data/types'
+    import type { ComponentsProps } from '$lib/types'
     import type { ConfigState } from './config.types'
     import { getCharIconMap, elementColor } from '../timeline/timeline.store.svelte'
     import EnemyPanel from './enemy-panel.svelte'
     import RandomEnhanceModal from './random-enhance-modal.svelte'
+    import EchoLoadoutBar from './echo-loadout-bar.svelte'
     import { untrack } from 'svelte'
     import Icon from '@iconify/svelte'
+    import { fallbackIcon } from '$lib/utils/icons'
 
-    interface Props {
+    interface Props extends ComponentsProps {
         team: [CharSlot, CharSlot, CharSlot]
         data: ConfigState | null
         locked?: boolean
         onupdate: (state: ConfigState) => void
+        onteamconfigupdate?: (team: [CharSlot, CharSlot, CharSlot], config: ConfigState) => void
     }
 
-    let { team, data, locked = false, onupdate }: Props = $props()
+    let {
+        team,
+        data,
+        locked = false,
+        onupdate,
+        onteamconfigupdate,
+        class: className,
+        style: styleProp
+    }: Props = $props()
 
     let activeTab = $state<'char0' | 'char1' | 'char2' | 'enemy'>('char0')
     let showMainStatMenu = $state<{ ci: number; si: number } | null>(null)
     let showSubstatModal = $state<{ ci: number; si: number } | null>(null)
     let showEnhanceModal = $state<{ ci: number; si: number } | null>(null)
     let dragState = $state<{ ci: number; si: number; idx: number; dropIdx: number; outside: boolean } | null>(null)
+    let echoScrollEl = $state<HTMLDivElement | undefined>()
 
     $effect(() => {
         const nextData = data
         const nextLocked = locked
         untrack(() => init(nextData, nextLocked))
+    })
+
+    $effect(() => {
+        activeTab
+        if (echoScrollEl) echoScrollEl.scrollLeft = 0
     })
 
     let config = $derived(getConfig())
@@ -59,15 +77,10 @@
     const TAB_LABELS = ['角色1', '角色2', '角色3', '敌人配置']
     const COST_OPTIONS = [4, 3, 1]
 
-    function costColor(cost: number): string {
-        if (cost === 4) return '#ef4444'
-        if (cost === 3) return '#ca8a04'
-        return '#22c55e'
-    }
     function costBtnCls(cost: number): string {
-        if (cost === 4) return 'bg-red-500/15 text-red-500'
-        if (cost === 3) return 'bg-yellow-500/15 text-yellow-600'
-        return 'bg-green-500/15 text-green-600'
+        if (cost === 4) return 'bg-fuchsia-500/15 text-fuchsia-500'
+        if (cost === 3) return 'bg-indigo-500/15 text-indigo-500'
+        return 'bg-sky-500/15 text-sky-500'
     }
 
     function handleSetCost(ci: number, si: number, cost: number) {
@@ -225,7 +238,22 @@
     }
 </script>
 
-<div class="flex h-full flex-col p-5" style="background: var(--theme-modal-bg); color: var(--theme-modal-text)">
+<div
+    class={['flex h-full flex-col p-5', className || ''].filter(Boolean).join(' ')}
+    style={`background: var(--theme-modal-bg); color: var(--theme-modal-text); ${styleProp || ''}`}
+>
+    <EchoLoadoutBar
+        {team}
+        {config}
+        {locked}
+        class="mb-4"
+        onapply={(nextTeam, nextConfig) => {
+            init(nextConfig, locked)
+            if (onteamconfigupdate) onteamconfigupdate(nextTeam, nextConfig)
+            else onupdate(nextConfig)
+        }}
+    />
+
     <!-- Tabs -->
     <div class="flex gap-2 mb-4">
         {#each TAB_LABELS as label, i}
@@ -247,7 +275,12 @@
             >
                 {#if i < 3 && charNames[i]}
                     {#if charIcons[charNames[i]]}
-                        <img src={charIcons[charNames[i]]} alt="" class="size-5 rounded-full shrink-0" />
+                        <img
+                            src={charIcons[charNames[i]]}
+                            alt=""
+                            use:fallbackIcon={'/icons/placeholder-character.svg'}
+                            class="size-5 rounded-full shrink-0"
+                        />
                     {:else}
                         <div
                             class="size-5 rounded-full bg-(--theme-modal-text)/10 flex items-center justify-center text-[10px] shrink-0"
@@ -277,16 +310,7 @@
         <div class="flex flex-col flex-1 min-h-0">
             <div class="relative flex-1 min-h-0">
                 <div
-                    class="pointer-events-none absolute inset-y-0 left-0 w-8 z-10"
-                    style="background: linear-gradient(to right, var(--theme-modal-bg), transparent);"
-                    data-shadow="left"
-                ></div>
-                <div
-                    class="pointer-events-none absolute inset-y-0 right-0 w-8 z-10"
-                    style="background: linear-gradient(to left, var(--theme-modal-bg), transparent);"
-                    data-shadow="right"
-                ></div>
-                <div
+                    bind:this={echoScrollEl}
                     class="flex gap-4 overflow-x-auto overflow-y-hidden pb-2 items-start scale-y-[-1] hide-scrollbar absolute inset-0"
                     use:horizontalScroll
                 >

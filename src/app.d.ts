@@ -1,10 +1,10 @@
-import type { EchoImportBridge } from '$lib/desktop-extension/echo-import'
+import type { EchoImportBridge } from '$lib/ygkit/echo-import'
 
 // See https://svelte.dev/docs/kit/types#app.d.ts
 // for information about these interfaces
 declare global {
     interface Window {
-        WuwaDesktopEchoImport?: EchoImportBridge
+        YGKitEchoImport?: EchoImportBridge
     }
 
     namespace App {

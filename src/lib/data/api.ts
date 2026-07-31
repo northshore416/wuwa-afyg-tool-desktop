@@ -1,6 +1,5 @@
 import { browser } from '$app/environment'
-import { UI_BTN_ICON_CACHE_ENTITY } from '$lib/desktop-extension/ui-button-icons'
-import { dbGet, dbSet, dbClear } from './db'
+import { makeTextButtonIcon } from '$lib/utils/ui-button-icons'
 import type {
     Character,
     Weapon,
@@ -15,7 +14,6 @@ import type {
 const PREFIX = 'wuwa-afyg:'
 const LIST_TTL = 24 * 60 * 60 * 1000
 const INFO_TTL = 24 * 60 * 60 * 1000
-const ICON_TTL = Infinity
 
 const memoryCache = new Map<string, unknown>()
 const inFlight = new Map<string, Promise<unknown>>()
@@ -75,57 +73,18 @@ async function fetchJSON<T>(url: string, cacheK: string, ttl: number): Promise<T
     }
 }
 
-async function fetchIcons(entity: string): Promise<Record<string, string>> {
-    const iconCacheEntity = entity === 'ui-btn' ? UI_BTN_ICON_CACHE_ENTITY : entity
-    const k = cacheKey('icons', iconCacheEntity)
+async function fetchBatchIcons(entity: string): Promise<Record<string, string>> {
+    const k = cacheKey('batch-icons', entity)
     if (memoryCache.has(k)) return memoryCache.get(k) as Record<string, string>
-
-    // Check IndexedDB first
-    const idbEntry = await dbGet<Record<string, string>>(k)
-    if (idbEntry && Date.now() - idbEntry.ts <= ICON_TTL) {
-        memoryCache.set(k, idbEntry.data)
-        return idbEntry.data
-    }
-
-    // Migration: check localStorage for old cached data
-    const lsCached = getLocal<Record<string, string>>(k, ICON_TTL)
-    if (lsCached) {
-        memoryCache.set(k, lsCached)
-        dbSet(k, lsCached)
-        localStorage.removeItem(k)
-        return lsCached
-    }
-
     if (inFlight.has(k)) return inFlight.get(k) as Promise<Record<string, string>>
 
     const promise = (async () => {
-        const res = await fetch(`/api/v1/icons/${entity}`)
-        if (!res.ok) throw new Error(`API ${res.status}: /api/v1/icons/${entity}`)
-        const pairs: [string, string][] = await res.json()
-
-        const map: Record<string, string> = {}
-        await Promise.all(
-            pairs.map(async ([name, url]) => {
-                try {
-                    const imgRes = await fetch(url)
-                    if (!imgRes.ok) return
-                    const blob = await imgRes.blob()
-                    const base64 = await new Promise<string>((resolve, reject) => {
-                        const reader = new FileReader()
-                        reader.onloadend = () => resolve(reader.result as string)
-                        reader.onerror = reject
-                        reader.readAsDataURL(blob)
-                    })
-                    map[name] = base64
-                } catch {
-                    map[name] = url
-                }
-            })
-        )
-
-        memoryCache.set(k, map)
-        await dbSet(k, map)
-        return map
+        const res = await fetch(`/api/v1/batch-icons/${entity}`)
+        if (!res.ok) throw new Error(`API ${res.status}: /api/v1/batch-icons/${entity}`)
+        const data: Record<string, string> = await res.json()
+        memoryCache.set(k, data)
+        warmImageCache(Object.values(data))
+        return data
     })()
 
     inFlight.set(k, promise)
@@ -134,6 +93,53 @@ async function fetchIcons(entity: string): Promise<Record<string, string>> {
     } finally {
         inFlight.delete(k)
     }
+}
+
+const warmImageCache = (urls: string[]) => {
+    if (typeof caches === 'undefined') return
+    caches.open('nanoka-cdn').then((cache) => {
+        for (const url of urls) {
+            cache.match(url).then((hit) => {
+                if (!hit) {
+                    fetch(url, { mode: 'no-cors' })
+                        .then((response) => cache.put(url, response))
+                        .catch(() => {})
+                }
+            })
+        }
+    })
+}
+
+const ELEMENT_ICONS: Record<string, string> = {
+    冷凝: '/icons/element/冷凝.webp',
+    热熔: '/icons/element/热熔.webp',
+    导电: '/icons/element/导电.webp',
+    气动: '/icons/element/气动.webp',
+    衍射: '/icons/element/衍射.webp',
+    湮灭: '/icons/element/湮灭.webp'
+}
+
+const WEAPON_TYPE_ICONS: Record<string, string> = {
+    长刃: '/icons/weapon-type/长刃.webp',
+    迅刀: '/icons/weapon-type/迅刀.webp',
+    佩枪: '/icons/weapon-type/佩枪.webp',
+    臂铠: '/icons/weapon-type/臂铠.webp',
+    音感仪: '/icons/weapon-type/音感仪.webp'
+}
+
+const UI_BTN_ICONS: Record<string, string> = {
+    MouseLeft: '/icons/btn/MouseLeft.webp',
+    MouseRight: '/icons/btn/MouseRight.webp',
+    Intro: makeTextButtonIcon('变'),
+    Outro: makeTextButtonIcon('延'),
+    Q: '/icons/btn/Q.webp',
+    E: '/icons/btn/E.webp',
+    R: '/icons/btn/R.webp',
+    Z: makeTextButtonIcon('Z'),
+    F: '/icons/btn/F.webp',
+    T: '/icons/btn/T.webp',
+    SpaceBar: '/icons/btn/SpaceBar.webp',
+    MouseMiddle: '/icons/btn/MouseMiddle.webp'
 }
 
 // ── Lists ──
@@ -157,31 +163,31 @@ export function getEchoSetList(): Promise<EchoSetItem[]> {
 // ── Icons ──
 
 export function getCharacterIcons(): Promise<Record<string, string>> {
-    return fetchIcons('character')
+    return fetchBatchIcons('character')
 }
 
 export function getWeaponIcons(): Promise<Record<string, string>> {
-    return fetchIcons('weapon')
+    return fetchBatchIcons('weapon')
 }
 
 export function getEchoIcons(): Promise<Record<string, string>> {
-    return fetchIcons('echo')
+    return fetchBatchIcons('echo')
 }
 
 export function getElementIcons(): Promise<Record<string, string>> {
-    return fetchIcons('element')
+    return Promise.resolve(ELEMENT_ICONS)
 }
 
 export function getWeaponTypeIcons(): Promise<Record<string, string>> {
-    return fetchIcons('weapon-type')
+    return Promise.resolve(WEAPON_TYPE_ICONS)
 }
 
 export function getEchoSetIcons(): Promise<Record<string, string>> {
-    return fetchIcons('echo-set')
+    return fetchBatchIcons('echo-set')
 }
 
 export function getUiBtnIcons(): Promise<Record<string, string>> {
-    return fetchIcons('ui-btn')
+    return Promise.resolve(UI_BTN_ICONS)
 }
 
 // ── Info ──
@@ -223,7 +229,6 @@ export function getEchoSetInfo(name: string): Promise<EchoSetInfo> {
 export function clearCache(category?: string, entity?: string): void {
     if (!browser) return
     if (!category) {
-        dbClear(PREFIX)
         for (let i = localStorage.length - 1; i >= 0; i--) {
             const k = localStorage.key(i)
             if (k?.startsWith(PREFIX)) localStorage.removeItem(k)
@@ -232,7 +237,6 @@ export function clearCache(category?: string, entity?: string): void {
         return
     }
     const prefix = cacheKey(category, entity ?? '')
-    dbClear(prefix)
     for (let i = localStorage.length - 1; i >= 0; i--) {
         const k = localStorage.key(i)
         if (k?.startsWith(prefix)) localStorage.removeItem(k)

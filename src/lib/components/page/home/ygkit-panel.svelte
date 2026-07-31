@@ -2,7 +2,8 @@
     import { onMount } from 'svelte'
     import Icon from '@iconify/svelte'
     import Modal from '$lib/components/layout/modal.svelte'
-    import type { EchoImportBridgeResult, EchoImportPayload } from '$lib/desktop-extension/echo-import'
+    import type { EchoImportBridgeResult, EchoImportPayload } from '$lib/ygkit/echo-import'
+    import type { CharSlot } from '$lib/data/types'
     import type { ComponentsProps } from '$lib/types'
     import type {
         YGKitAuthResponse,
@@ -15,9 +16,10 @@
         open: boolean
         onclose?: () => void
         onimport: (payload: EchoImportPayload) => Promise<EchoImportBridgeResult>
+        team?: [CharSlot, CharSlot, CharSlot] | null
     }
 
-    let { open, onclose, onimport, class: className, style: styleProp }: Props = $props()
+    let { open, onclose, onimport, team = null, class: className, style: styleProp }: Props = $props()
 
     let loading = $state(false)
     let submitting = $state(false)
@@ -25,9 +27,12 @@
     let rememberMe = $state(true)
     let authenticated = $state(false)
     let subject = $state('')
+    let displayName = $state('')
+    let avatarUrl = $state('')
     let accounts = $state<YGKitUidCharacters[]>([])
     let errorMessage = $state('')
     let successMessage = $state('')
+    let autoImportedKey = $state('')
 
     async function requestJson<T>(endpoint: string, options?: RequestInit): Promise<T> {
         const response = await fetch(endpoint, options)
@@ -45,6 +50,7 @@
             )
             accounts = result.accounts
             if (result.errors?.length) errorMessage = result.errors.join('\n')
+            await autoImportMatchingTeam(result.accounts)
         } catch (error) {
             errorMessage = error instanceof Error ? error.message : '角色数据加载失败'
         } finally {
@@ -59,6 +65,8 @@
             const result = await requestJson<YGKitAuthResponse>('/api/ygkit/auth/me')
             authenticated = result.authenticated
             subject = result.user?.subject || ''
+            displayName = result.user?.displayName || ''
+            avatarUrl = result.user?.avatarUrl || ''
             if (authenticated) await loadCharacters()
         } catch (error) {
             errorMessage = error instanceof Error ? error.message : '登录状态读取失败'
@@ -96,6 +104,8 @@
             await requestJson('/api/ygkit/auth/logout', { method: 'POST' })
             authenticated = false
             subject = ''
+            displayName = ''
+            avatarUrl = ''
             accounts = []
             successMessage = '已退出登录'
         } catch (error) {
@@ -125,6 +135,45 @@
             errorMessage = [result.message, ...result.warnings].filter(Boolean).join('\n')
         }
     }
+
+    const matchedCharacters = (account: YGKitUidCharacters) => {
+        const names = new Set((team || []).map((slot) => slot.character).filter(Boolean))
+        return account.characters.filter((character) => names.has(character.character) && character.echoes?.length)
+    }
+
+    const importAccountTeam = async (account: YGKitUidCharacters, closeAfter = false) => {
+        const characters = matchedCharacters(account)
+        if (characters.length === 0) return
+        const result = await onimport({
+            version: 1,
+            source: `YGKIT/XutheringWavesUID/${account.uid}`,
+            characters
+        })
+        if (result.ok) {
+            successMessage = `已从 UID ${account.uid} 同步当前队伍的 ${characters.length} 名角色。`
+            if (closeAfter) onclose?.()
+        } else {
+            errorMessage = [result.message, ...result.warnings].filter(Boolean).join('\n')
+        }
+    }
+
+    const autoImportMatchingTeam = async (availableAccounts: YGKitUidCharacters[]) => {
+        if (!team) return
+        const account = [...availableAccounts].sort(
+            (left, right) => matchedCharacters(right).length - matchedCharacters(left).length
+        )[0]
+        if (!account || matchedCharacters(account).length === 0) return
+        const key = `${account.uid}:${team.map((slot) => slot.character || '').join(',')}`
+        if (autoImportedKey === key) return
+        autoImportedKey = key
+        await importAccountTeam(account)
+    }
+
+    $effect(() => {
+        const currentTeam = team
+        const currentAccounts = accounts
+        if (currentTeam && currentAccounts.length > 0) void autoImportMatchingTeam(currentAccounts)
+    })
 
     onMount(() => {
         void loadSession()
@@ -181,9 +230,24 @@
             </button>
         {:else}
             <div class="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-black/15 p-3">
-                <div class="min-w-0">
-                    <div class="text-sm font-medium">已通过 QQ/XWUID 登录</div>
-                    <div class="truncate text-xs text-white/45">{subject}</div>
+                <div class="flex min-w-0 items-center gap-3">
+                    {#if avatarUrl}
+                        <img
+                            src={avatarUrl}
+                            alt=""
+                            class="size-10 rounded-full object-cover ring-2 ring-indigo-400/20"
+                        />
+                    {:else}
+                        <span
+                            class="flex size-10 shrink-0 items-center justify-center rounded-full bg-indigo-500/10 text-indigo-300"
+                        >
+                            <Icon icon="mdi:account-check-outline" class="size-5" />
+                        </span>
+                    {/if}
+                    <div class="min-w-0">
+                        <div class="truncate text-sm font-medium">{displayName || '已通过 QQ/XWUID 登录'}</div>
+                        <div class="truncate text-xs text-white/45">{subject}</div>
+                    </div>
                 </div>
                 <div class="flex shrink-0 gap-2">
                     <button
@@ -216,7 +280,18 @@
                         <section class="flex flex-col gap-2">
                             <div class="flex items-center justify-between text-xs text-white/50">
                                 <span>UID {account.uid}</span>
-                                <span>{account.characters.length} 个角色</span>
+                                <div class="flex items-center gap-2">
+                                    <span>{account.characters.length} 个角色</span>
+                                    {#if matchedCharacters(account).length > 0}
+                                        <button
+                                            onclick={() => importAccountTeam(account, true)}
+                                            class="inline-flex items-center gap-1 rounded-md bg-indigo-500/15 px-2 py-1 text-indigo-200 transition hover:bg-indigo-500/25"
+                                        >
+                                            <Icon icon="mdi:account-sync-outline" class="size-3.5" />
+                                            导入当前队伍
+                                        </button>
+                                    {/if}
+                                </div>
                             </div>
                             <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
                                 {#each account.characters as character}

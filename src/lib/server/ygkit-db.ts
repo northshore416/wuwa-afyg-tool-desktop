@@ -2,12 +2,14 @@ import { createHash, randomBytes } from 'node:crypto'
 import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import Database from 'better-sqlite3'
+import { isYGKitAdmin } from '$lib/server/ygkit-admin'
 import type { YGKitUser } from '$lib/ygkit/types'
 
 interface TicketRow {
     id: number
     subject: string
     uids_json: string
+    profile_json: string
     expires_at: number
 }
 
@@ -25,6 +27,16 @@ interface BindingRow {
     uid: string
 }
 
+interface UserProfileRow {
+    display_name: string | null
+    avatar_url: string | null
+}
+
+interface TicketProfile {
+    displayName: string
+    avatarUrl: string
+}
+
 export interface CreatedSession {
     secret: string
     user: YGKitUser
@@ -38,12 +50,35 @@ const nowSeconds = () => Math.floor(Date.now() / 1000)
 const hashSecret = (secret: string) => createHash('sha256').update(secret).digest('hex')
 const newSecret = (bytes: number) => randomBytes(bytes).toString('base64url')
 
+export const getQQAvatarUrl = (subject: string, revision?: number): string => {
+    const qqId = subject.split(':').at(-1) || ''
+    if (!/^\d{5,20}$/.test(qqId)) return ''
+    const refresh = revision === undefined ? '' : `&t=${revision}`
+    return `https://q1.qlogo.cn/g?b=qq&nk=${qqId}&s=640${refresh}`
+}
+
 const normalizeUids = (uids: unknown): string[] => {
     if (!Array.isArray(uids)) return []
     return [...new Set(uids.map(String).filter((uid) => /^\d{5,20}$/.test(uid)))].slice(0, 10)
 }
 
-const getDatabase = (): Database.Database => {
+const normalizeProfile = (profile: unknown): TicketProfile => {
+    if (!profile || typeof profile !== 'object') return { displayName: '', avatarUrl: '' }
+    const value = profile as Record<string, unknown>
+    const displayName = typeof value.displayName === 'string' ? value.displayName.trim().slice(0, 80) : ''
+    const avatarUrl = typeof value.avatarUrl === 'string' ? value.avatarUrl.trim().slice(0, 500) : ''
+    return {
+        displayName,
+        avatarUrl: /^https:\/\//.test(avatarUrl) ? avatarUrl : ''
+    }
+}
+
+const ensureColumn = (db: Database.Database, table: string, column: string, declaration: string) => {
+    const columns = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]
+    if (!columns.some((item) => item.name === column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${declaration}`)
+}
+
+export const getYGKitDatabase = (): Database.Database => {
     if (database) return database
 
     const dataDir = process.env.YGKIT_DATA_DIR || join(process.cwd(), '.ygkit-data')
@@ -56,6 +91,8 @@ const getDatabase = (): Database.Database => {
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             subject TEXT NOT NULL UNIQUE,
             auth_version INTEGER NOT NULL DEFAULT 1,
+            display_name TEXT,
+            avatar_url TEXT,
             created_at INTEGER NOT NULL,
             disabled_at INTEGER
         );
@@ -73,6 +110,7 @@ const getDatabase = (): Database.Database => {
             ticket_hash TEXT NOT NULL UNIQUE,
             subject TEXT NOT NULL,
             uids_json TEXT NOT NULL,
+            profile_json TEXT NOT NULL DEFAULT '{}',
             created_at INTEGER NOT NULL,
             expires_at INTEGER NOT NULL,
             consumed_at INTEGER
@@ -93,6 +131,9 @@ const getDatabase = (): Database.Database => {
         CREATE INDEX IF NOT EXISTS idx_sessions_hash ON sessions(session_hash);
         CREATE INDEX IF NOT EXISTS idx_tickets_hash ON login_tickets(ticket_hash);
     `)
+    ensureColumn(database, 'users', 'display_name', 'display_name TEXT')
+    ensureColumn(database, 'users', 'avatar_url', 'avatar_url TEXT')
+    ensureColumn(database, 'login_tickets', 'profile_json', "profile_json TEXT NOT NULL DEFAULT '{}'")
     return database
 }
 
@@ -100,34 +141,51 @@ const getUser = (db: Database.Database, userId: number, subject: string): YGKitU
     const bindings = db
         .prepare('SELECT uid FROM game_bindings WHERE user_id = ? AND revoked_at IS NULL ORDER BY uid')
         .all(userId) as BindingRow[]
-    return { id: userId, subject, uids: bindings.map((row) => row.uid) }
+    const profile = db.prepare('SELECT display_name, avatar_url FROM users WHERE id = ?').get(userId) as
+        UserProfileRow | undefined
+    return {
+        id: userId,
+        subject,
+        uids: bindings.map((row) => row.uid),
+        displayName: profile?.display_name || `QQ ${subject.split(':').at(-1) || userId}`,
+        avatarUrl: profile?.avatar_url || getQQAvatarUrl(subject),
+        isAdmin: isYGKitAdmin(subject)
+    }
 }
 
-export const createLoginTicket = (subject: string, rawUids: unknown) => {
+export const createLoginTicket = (subject: string, rawUids: unknown, rawProfile?: unknown) => {
     const uids = normalizeUids(rawUids)
     if (!/^qq:[^:]{1,64}:[^:]{1,64}$/.test(subject)) throw new Error('invalid subject')
     if (uids.length === 0) throw new Error('no valid uid')
 
-    const ticket = newSecret(20)
     const createdAt = nowSeconds()
+    const ticket = newSecret(20)
+    const normalizedProfile = normalizeProfile(rawProfile)
+    const profile: TicketProfile = {
+        ...normalizedProfile,
+        avatarUrl: getQQAvatarUrl(subject, createdAt) || normalizedProfile.avatarUrl
+    }
     const expiresAt = createdAt + 300
-    getDatabase()
+    getYGKitDatabase()
         .prepare(
-            'INSERT INTO login_tickets (ticket_hash, subject, uids_json, created_at, expires_at) VALUES (?, ?, ?, ?, ?)'
+            `INSERT INTO login_tickets
+             (ticket_hash, subject, uids_json, profile_json, created_at, expires_at)
+             VALUES (?, ?, ?, ?, ?, ?)`
         )
-        .run(hashSecret(ticket), subject, JSON.stringify(uids), createdAt, expiresAt)
+        .run(hashSecret(ticket), subject, JSON.stringify(uids), JSON.stringify(profile), createdAt, expiresAt)
     return { ticket, expiresIn: 300 }
 }
 
 export const consumeLoginTicket = (ticket: string, persistent: boolean): CreatedSession => {
     if (!/^[A-Za-z0-9_-]{20,80}$/.test(ticket)) throw new Error('invalid ticket')
-    const db = getDatabase()
+    const db = getYGKitDatabase()
 
     return db.transaction(() => {
         const now = nowSeconds()
         const row = db
             .prepare(
-                'SELECT id, subject, uids_json, expires_at FROM login_tickets WHERE ticket_hash = ? AND consumed_at IS NULL'
+                `SELECT id, subject, uids_json, profile_json, expires_at
+                 FROM login_tickets WHERE ticket_hash = ? AND consumed_at IS NULL`
             )
             .get(hashSecret(ticket)) as TicketRow | undefined
         if (!row || row.expires_at <= now) throw new Error('ticket expired or already used')
@@ -138,6 +196,13 @@ export const consumeLoginTicket = (ticket: string, persistent: boolean): Created
         if (consumed.changes !== 1) throw new Error('ticket already used')
 
         db.prepare('INSERT OR IGNORE INTO users (subject, created_at) VALUES (?, ?)').run(row.subject, now)
+        const profile = normalizeProfile(JSON.parse(row.profile_json || '{}'))
+        db.prepare(
+            `UPDATE users
+             SET display_name = CASE WHEN ? <> '' THEN ? ELSE display_name END,
+                 avatar_url = CASE WHEN ? <> '' THEN ? ELSE avatar_url END
+             WHERE subject = ?`
+        ).run(profile.displayName, profile.displayName, profile.avatarUrl, profile.avatarUrl, row.subject)
         const user = db
             .prepare('SELECT id, auth_version FROM users WHERE subject = ? AND disabled_at IS NULL')
             .get(row.subject) as { id: number; auth_version: number } | undefined
@@ -172,7 +237,7 @@ export const consumeLoginTicket = (ticket: string, persistent: boolean): Created
 
 export const authenticateSession = (secret: string | undefined): YGKitUser | null => {
     if (!secret) return null
-    const db = getDatabase()
+    const db = getYGKitDatabase()
     const now = nowSeconds()
     const row = db
         .prepare(
@@ -199,7 +264,7 @@ export const authenticateSession = (secret: string | undefined): YGKitUser | nul
 
 export const revokeSession = (secret: string | undefined): void => {
     if (!secret) return
-    getDatabase()
+    getYGKitDatabase()
         .prepare('UPDATE sessions SET revoked_at = ? WHERE session_hash = ? AND revoked_at IS NULL')
         .run(nowSeconds(), hashSecret(secret))
 }

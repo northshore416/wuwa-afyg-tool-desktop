@@ -41,7 +41,7 @@ async function getDb(): Promise<StoreDb> {
     ])
     const Database =
         (DatabaseModule as unknown as { default?: new (file: string) => StoreDb })?.default ?? DatabaseModule
-    const dataDir = process.env.WUWA_DATA_DIR || path.join(process.cwd(), '.desktop-data')
+    const dataDir = process.env.WUWA_DATA_DIR || path.join(process.cwd(), '.server-data')
     fs.mkdirSync(dataDir, { recursive: true })
 
     db = new (Database as new (file: string) => StoreDb)(path.join(dataDir, 'wuwa-afyg.db'))
@@ -185,7 +185,7 @@ export async function fetchCachedNanokaJson<T>(
     }
 }
 
-export function warmDesktopData(): Promise<void> {
+export function warmServerData(): Promise<void> {
     if (!isDesktopDataEnabled()) return Promise.resolve()
     if (warmPromise) return warmPromise
 

@@ -1,7 +1,6 @@
 <script lang="ts">
     import { onMount, tick } from 'svelte'
     import { goto } from '$app/navigation'
-    import { loadThemes } from '$lib/theme'
     import {
         loadProjects,
         getProjects,
@@ -49,11 +48,7 @@
         init as initCalculation
     } from '$lib/components/page/home/calculation/calculation.store.svelte'
     import { getConfig, init as initConfig } from '$lib/components/page/home/config/config.store.svelte'
-    import {
-        applyEchoImportPayload,
-        type EchoImportBridgeResult,
-        type EchoImportPayload
-    } from '$lib/desktop-extension/echo-import'
+    import { applyEchoImportPayload, type EchoImportBridgeResult, type EchoImportPayload } from '$lib/ygkit/echo-import'
     import favicon from '$lib/assets/favicon.svg'
     import ProjectSidebar from '$lib/components/page/home/project-sidebar.svelte'
     import TeamConfig from '$lib/components/page/home/team-config.svelte'
@@ -72,7 +67,6 @@
     let newName = $state('')
     let showResult = $state(false)
     let dataUpdating = $state(false)
-    let versionUpdating = $state(false)
     let showYGKit = $state(false)
 
     let sidebarWidth = $state(240)
@@ -139,10 +133,13 @@
             }
             localStorage.setItem('wuwa-afyg:version', getWWVersion())
         }
-        loadThemes()
         loadProjects()
         loadIcons()
-        if (new URLSearchParams(window.location.search).get('ygkit') === 'login') showYGKit = true
+        const search = new URLSearchParams(window.location.search)
+        if (search.get('ygkit') === 'login') showYGKit = true
+        if (search.get('workshop') === 'imported') {
+            addToast('创意工坊方案已导入，正在同步当前 YGKIT 账户声骸。', 'success', 5000)
+        }
     })
 
     let projects = $derived(getProjects())
@@ -184,7 +181,7 @@
 
     function installEchoImportBridge() {
         if (!browser) return
-        window.WuwaDesktopEchoImport = {
+        window.YGKitEchoImport = {
             version: 1,
             getActiveTeam: () => getActiveProject()?.team.map((slot) => slot.character) ?? [],
             importEchoes
@@ -198,8 +195,8 @@
 
         return () => {
             window.removeEventListener('message', onMessage)
-            if (window.WuwaDesktopEchoImport?.importEchoes === importEchoes) {
-                delete window.WuwaDesktopEchoImport
+            if (window.YGKitEchoImport?.importEchoes === importEchoes) {
+                delete window.YGKitEchoImport
             }
         }
     }
@@ -505,20 +502,6 @@
         return commit ? commit.slice(0, 7) : ''
     }
 
-    async function handleUpdateVersion() {
-        if (versionUpdating) return
-        versionUpdating = true
-        try {
-            const res = await fetch('/api/v1/app-update/install', { method: 'POST' })
-            const data = await res.json()
-            if (!res.ok || !data.ok) throw new Error(data.error ?? 'unknown error')
-            addToast(data.message ?? `已准备更新到 ${data.latestVersion}`, data.downloaded ? 'success' : 'info', 6000)
-        } catch (error) {
-            addToast('版本更新失败：' + (error instanceof Error ? error.message : String(error)), 'error')
-        } finally {
-            versionUpdating = false
-        }
-    }
     async function handleRefreshData() {
         if (dataUpdating) return
         dataUpdating = true
@@ -610,7 +593,7 @@
     />
     <button
         aria-label="调整侧边栏宽度"
-        class="shrink-0 w-1 cursor-col-resize transition-colors hover:bg-indigo-500/50"
+        class="shrink-0 w-1 cursor-col-resize transition-colors hover:bg-(--theme-accent-bg)/50"
         style="background: transparent;"
         onmousedown={(e) => {
             e.preventDefault()
@@ -648,19 +631,18 @@
                             {dataUpdating ? '更新中...' : '更新数据'}
                         </button>
                         <button
-                            onclick={handleUpdateVersion}
-                            disabled={versionUpdating}
-                            class="inline-flex items-center gap-1.5 rounded-lg border border-(--theme-card-border) bg-(--theme-card-bg) px-4 py-2 text-sm font-medium text-(--theme-card-text) transition-colors hover:bg-(--theme-card-bg-focused) disabled:opacity-40 disabled:pointer-events-none"
-                        >
-                            <Icon icon={versionUpdating ? 'mdi:loading' : 'mdi:update'} class="size-4" />
-                            {versionUpdating ? '更新中...' : '更新版本'}
-                        </button>
-                        <button
                             onclick={() => (showYGKit = true)}
                             class="inline-flex items-center gap-1.5 rounded-lg border border-(--theme-card-border) bg-(--theme-card-bg) px-4 py-2 text-sm font-medium text-(--theme-card-text) transition-colors hover:bg-(--theme-card-bg-focused)"
                         >
                             <Icon icon="mdi:link-variant" class="size-4" />
                             YGKIT</button
+                        >
+                        <button
+                            onclick={() => goto('/workshop')}
+                            class="inline-flex items-center gap-1.5 rounded-lg border border-(--theme-card-border) bg-(--theme-card-bg) px-4 py-2 text-sm font-medium text-(--theme-card-text) transition-colors hover:bg-(--theme-card-bg-focused)"
+                        >
+                            <Icon icon="mdi:creation-outline" class="size-4" />
+                            创意工坊</button
                         >
                         <button
                             onclick={() => goto('/api-test')}
@@ -723,6 +705,7 @@
                         data={activeProject.phases.config.data as ConfigState | null}
                         locked={phaseLocked}
                         onupdate={(state) => updateConfig(state)}
+                        onteamconfigupdate={(team, state) => updateTeamAndConfig(team, state)}
                     />
                 {/if}
                 {#if showStatOverview}
@@ -874,7 +857,12 @@
     />
 {/if}
 
-<YGKitPanel open={showYGKit} onclose={() => (showYGKit = false)} onimport={importEchoes} />
+<YGKitPanel
+    open={showYGKit}
+    team={activeProject?.team ?? null}
+    onclose={() => (showYGKit = false)}
+    onimport={importEchoes}
+/>
 
 <svelte:head><title>椰果工具箱</title></svelte:head>
 
@@ -902,7 +890,7 @@
                     id="project-name"
                     bind:value={newName}
                     placeholder="请输入项目名称"
-                    class="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none transition-colors placeholder:text-zinc-700 focus:border-indigo-500/50"
+                    class="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none transition-colors placeholder:text-zinc-700 focus:border-(--theme-accent-bg)/50"
                     style="background: var(--theme-search-box-bg); color: var(--theme-search-box-text)"
                     onkeydown={(e) => e.key === 'Enter' && handleCreate(newName)}
                 />
@@ -940,7 +928,7 @@
                     id="rename-name"
                     bind:value={renameValue}
                     placeholder="请输入新项目名称"
-                    class="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none transition-colors placeholder:text-zinc-700 focus:border-indigo-500/50"
+                    class="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none transition-colors placeholder:text-zinc-700 focus:border-(--theme-accent-bg)/50"
                     style="background: var(--theme-search-box-bg); color: var(--theme-search-box-text)"
                     onkeydown={(e) => e.key === 'Enter' && handleRename()}
                 />
@@ -982,7 +970,8 @@
                             type="checkbox"
                             checked={exportSelections[phase]}
                             onchange={() => toggleExportPhase(phase)}
-                            class="size-4 accent-indigo-500"
+                            class="size-4"
+                            style="accent-color: var(--theme-accent-bg, #6366f1)"
                         />
                         <span>{PHASE_LABELS[phase]}</span>
                     </label>
@@ -991,7 +980,12 @@
             <label
                 class="flex cursor-pointer items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-white/5"
             >
-                <input type="checkbox" bind:checked={exportResult} class="size-4 accent-indigo-500" />
+                <input
+                    type="checkbox"
+                    bind:checked={exportResult}
+                    class="size-4"
+                    style="accent-color: var(--theme-accent-bg, #6366f1)"
+                />
                 <span>包含结果分析</span>
             </label>
             <div class="flex justify-end gap-2">
@@ -1026,7 +1020,7 @@
                     id="clone-name"
                     bind:value={cloneName}
                     placeholder="请输入新项目名称"
-                    class="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none transition-colors placeholder:text-zinc-700 focus:border-indigo-500/50"
+                    class="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none transition-colors placeholder:text-zinc-700 focus:border-(--theme-accent-bg)/50"
                     style="background: var(--theme-search-box-bg); color: var(--theme-search-box-text)"
                     onkeydown={(e) => e.key === 'Enter' && handleClone()}
                 />
@@ -1042,7 +1036,8 @@
                                 type="checkbox"
                                 checked={cloneSelections[phase]}
                                 onchange={() => toggleClonePhase(phase)}
-                                class="size-4 accent-indigo-500"
+                                class="size-4"
+                                style="accent-color: var(--theme-accent-bg, #6366f1)"
                             />
                             <span>{PHASE_LABELS[phase]}</span>
                         </label>
@@ -1052,7 +1047,12 @@
             <label
                 class="flex cursor-pointer items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-white/5"
             >
-                <input type="checkbox" bind:checked={cloneResult} class="size-4 accent-indigo-500" />
+                <input
+                    type="checkbox"
+                    bind:checked={cloneResult}
+                    class="size-4"
+                    style="accent-color: var(--theme-accent-bg, #6366f1)"
+                />
                 <span>包含结果分析和 DPS 排名</span>
             </label>
             <div class="flex justify-end gap-2">
