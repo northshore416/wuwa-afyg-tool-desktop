@@ -7,3 +7,7 @@ bun.lockb
 
 # Miscellaneous
 /static/
+
+
+# Vendored wwcombo application keeps its upstream formatting
+/apps/wwcombo/

@@ -54,3 +54,17 @@ outputs/
 *.sqlite3
 *.db-shm
 *.db-wal
+
+
+# Integrated wwcombo trainer outputs and local native dependencies
+/apps/wwcombo/node_modules/
+/apps/wwcombo/dist/
+/apps/wwcombo/src-tauri/target/
+/apps/wwcombo/src-tauri/resources/ffmpeg.exe
+/apps/wwcombo/*.tsbuildinfo
+
+
+# Local kernel snapshots and generated desktop packages
+/.kernel/
+/build/
+/release/

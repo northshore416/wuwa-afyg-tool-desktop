@@ -1,0 +1,33 @@
+{
+    "name": "@northshore/afyg-combo-trainer",
+    "version": "0.3.0",
+    "private": true,
+    "license": "MIT",
+    "description": "AFYG integrated desktop combo recorder and practice trainer for Wuthering Waves.",
+    "scripts": {
+        "dev": "vite --host 127.0.0.1 --port 5174",
+        "build": "tsc -b && vite build",
+        "preview": "vite preview --host 127.0.0.1 --port 4174",
+        "typecheck": "tsc --noEmit",
+        "tauri:dev": "tauri dev",
+        "tauri:build": "tauri build",
+        "tauri:build:full": "tauri build --config src-tauri/tauri.ffmpeg.conf.json"
+    },
+    "dependencies": {
+        "@tauri-apps/api": "2.11.1",
+        "lucide-react": "1.23.0",
+        "pixi-spine": "4.0.6",
+        "pixi.js": "7.4.3",
+        "react": "19.2.7",
+        "react-dom": "19.2.7"
+    },
+    "devDependencies": {
+        "@tauri-apps/cli": "2.11.4",
+        "@types/node": "26.1.0",
+        "@types/react": "19.2.17",
+        "@types/react-dom": "19.2.3",
+        "@vitejs/plugin-react": "6.0.3",
+        "typescript": "6.0.3",
+        "vite": "8.1.3"
+    }
+}

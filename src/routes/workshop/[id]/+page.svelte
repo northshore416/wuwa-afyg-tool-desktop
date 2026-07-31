@@ -5,6 +5,7 @@
     import { importProjects } from '$lib/data/project.svelte'
     import { getCachedYGKitUser, loadCachedYGKitUser, rememberYGKitUser } from '$lib/data/ygkit-profile.svelte'
     import { prepareWorkshopImport } from '$lib/workshop/project-template'
+    import { formatWwcomboDuration } from '$lib/workshop/wwcombo-package'
     import type { WorkshopItem, WorkshopSession } from '$lib/workshop/types'
     import { formatWorkshopDate, responseMessage } from '../utils'
 
@@ -195,6 +196,47 @@
                         </div>
                     </div>
 
+                    {#if item.practiceCharts.length > 0}
+                        <section class="mt-5 border-y border-emerald-300/15 bg-emerald-300/[0.035] px-1 py-6">
+                            <div class="flex items-center gap-2">
+                                <Icon icon="mdi:gamepad-variant-outline" class="size-5 text-emerald-300" />
+                                <h2 class="text-sm font-semibold text-slate-200">已绑定练轴预设</h2>
+                            </div>
+                            <div class="mt-4 grid gap-3">
+                                {#each item.practiceCharts as practice}
+                                    <div class="rounded-lg border border-white/10 bg-black/20 p-4">
+                                        <div class="flex flex-wrap items-start justify-between gap-3">
+                                            <div class="min-w-0">
+                                                <p class="truncate font-medium text-emerald-100">{practice.title}</p>
+                                                <p class="mt-1 text-xs text-slate-500">
+                                                    {practice.actionCount} 个动作 · {formatWwcomboDuration(
+                                                        practice.durationMs
+                                                    )}
+                                                </p>
+                                            </div>
+                                            <span
+                                                class="rounded-md bg-emerald-300/10 px-2 py-1 text-xs text-emerald-300"
+                                            >
+                                                wwcombo v{practice.schemaVersion}
+                                            </span>
+                                        </div>
+                                        {#if practice.team.length > 0}
+                                            <div class="mt-3 flex flex-wrap gap-2">
+                                                {#each practice.team as character}
+                                                    <span
+                                                        class="rounded-md border border-white/8 px-2 py-1 text-xs text-slate-400"
+                                                    >
+                                                        {character}
+                                                    </span>
+                                                {/each}
+                                            </div>
+                                        {/if}
+                                    </div>
+                                {/each}
+                            </div>
+                        </section>
+                    {/if}
+
                     {#if item.tutorial}
                         <a
                             href={item.tutorial.url}
@@ -230,6 +272,20 @@
                     <p class="mt-3 text-xs leading-5 text-slate-500">
                         导入后仍可选择账户声骸配组，也可以继续手动修改所有配置。
                     </p>
+
+                    {#if item.practiceCharts.length > 0}
+                        <a
+                            href={'/api/workshop/items/' + item.id + '/bundle'}
+                            download
+                            class="mt-4 inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-emerald-400 font-semibold text-emerald-950 transition hover:bg-emerald-300"
+                        >
+                            <Icon icon="mdi:gamepad-variant-outline" class="size-5" />
+                            下载排轴与练轴组合预设
+                        </a>
+                        <p class="mt-3 text-xs leading-5 text-slate-500">
+                            下载后在仓库内集成的椰果连段训练器中点击“导入”，即可读取练轴谱并开始练习。
+                        </p>
+                    {/if}
 
                     {#if displayUser}
                         <div class="mt-5 flex items-center gap-3 border-t border-white/8 pt-5">

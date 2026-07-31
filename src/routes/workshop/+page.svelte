@@ -7,8 +7,15 @@
         WorkshopItemSummary,
         WorkshopLinkPreview,
         WorkshopListResponse,
-        WorkshopSession
+        WorkshopSession,
+        WwcomboChartPackage
     } from '$lib/workshop/types'
+    import {
+        MAX_WWCOMBO_PACKAGE_BYTES,
+        extractWwcomboChartPackages,
+        formatWwcomboDuration,
+        getWwcomboChartDuration
+    } from '$lib/workshop/wwcombo-package'
     import type { WorkshopNotice } from './types'
     import { formatWorkshopDate, responseMessage } from './utils'
 
@@ -29,6 +36,9 @@
     let tutorialPreviewing = $state(false)
     let tutorialError = $state('')
     let selectedProjectId = $state('')
+    let practiceChart = $state<WwcomboChartPackage | null>(null)
+    let practiceFileName = $state('')
+    let practiceError = $state('')
     let notice = $state<WorkshopNotice | null>(null)
 
     let projects = $derived(getProjects())
@@ -125,6 +135,38 @@
         showPublish = true
     }
 
+    const selectPracticeChart = async (event: Event) => {
+        const input = event.currentTarget as HTMLInputElement
+        const file = input.files?.[0]
+        input.value = ''
+        practiceError = ''
+        if (!file) return
+        if (file.size > MAX_WWCOMBO_PACKAGE_BYTES * 2) {
+            practiceChart = null
+            practiceFileName = ''
+            practiceError = '导入文件不能超过 2 MB'
+            return
+        }
+        try {
+            const parsed = JSON.parse((await file.text()).replace(/^\uFEFF/, '')) as unknown
+            const packages = extractWwcomboChartPackages(parsed)
+            if (new Blob([JSON.stringify(packages[0])]).size > MAX_WWCOMBO_PACKAGE_BYTES)
+                throw new Error('练轴数据不能超过 1 MB')
+            practiceChart = packages[0]
+            practiceFileName = file.name
+        } catch (cause) {
+            practiceChart = null
+            practiceFileName = ''
+            practiceError = cause instanceof Error ? cause.message : '练轴文件无法识别'
+        }
+    }
+
+    const clearPracticeChart = () => {
+        practiceChart = null
+        practiceFileName = ''
+        practiceError = ''
+    }
+
     const publish = async () => {
         const project = projects.find((item) => item.id === selectedProjectId)
         if (!project || !title.trim() || publishing) return
@@ -139,7 +181,8 @@
                     description: description.trim(),
                     gameVersion: gameVersion.trim(),
                     tutorialUrl: tutorialUrl.trim(),
-                    project
+                    project,
+                    practiceChart: practiceChart || undefined
                 })
             })
             if (!response.ok) throw new Error(await responseMessage(response))
@@ -150,6 +193,7 @@
             tutorialUrl = ''
             tutorialPreview = null
             tutorialError = ''
+            clearPracticeChart()
             await loadItems()
             notice = { tone: 'success', message: '投稿已提交审核，声骸数据已由服务器自动清空。' }
         } catch (cause) {
@@ -346,6 +390,12 @@
                                             <p class="text-xs text-violet-300">附带教学</p>
                                             <p class="mt-1 truncate text-sm text-slate-300">{item.tutorial.title}</p>
                                         </div>
+                                    </div>
+                                {/if}
+                                {#if item.practiceCharts.length > 0}
+                                    <div class="mt-4 flex items-center gap-2 text-xs text-emerald-300">
+                                        <Icon icon="mdi:gamepad-variant-outline" class="size-4" />
+                                        已绑定 {item.practiceCharts.length} 份练轴预设
                                     </div>
                                 {/if}
                                 <div class="mt-4 flex flex-wrap gap-2">
@@ -556,6 +606,52 @@
                                 </span>
                             {/if}
                             <p class="line-clamp-2 text-xs leading-5 text-slate-300">{tutorialPreview.title}</p>
+                        </div>
+                    {/if}
+                </div>
+                <div class="grid gap-2 text-sm text-slate-300">
+                    <span>练轴预设（可选）</span>
+                    <label
+                        class="flex min-h-20 cursor-pointer items-center gap-3 rounded-xl border border-dashed border-emerald-300/25 bg-emerald-300/5 px-4 py-3 transition hover:bg-emerald-300/10"
+                    >
+                        <input
+                            type="file"
+                            accept=".wwcombo.json,.afyg-workshop.json,application/json,.json"
+                            class="sr-only"
+                            onchange={selectPracticeChart}
+                        />
+                        <Icon icon="mdi:gamepad-variant-outline" class="size-6 shrink-0 text-emerald-300" />
+                        <span class="min-w-0">
+                            <span class="block font-medium text-slate-200">
+                                {practiceChart ? '更换练轴文件' : '选择 wwcombo 练轴文件'}
+                            </span>
+                            <span class="mt-1 block text-xs leading-5 text-slate-500">
+                                发布后会与当前排轴绑定，其他人下载组合预设即可导入训练器练习。
+                            </span>
+                        </span>
+                    </label>
+                    {#if practiceError}
+                        <p class="text-xs text-red-300">{practiceError}</p>
+                    {:else if practiceChart}
+                        <div
+                            class="flex items-center justify-between gap-3 rounded-xl border border-emerald-300/20 bg-black/20 p-3"
+                        >
+                            <div class="min-w-0">
+                                <p class="truncate text-sm font-medium text-emerald-200">{practiceChart.chart.title}</p>
+                                <p class="mt-1 truncate text-xs text-slate-500">
+                                    {practiceFileName} · {practiceChart.chart.steps.length} 个动作 ·
+                                    {formatWwcomboDuration(getWwcomboChartDuration(practiceChart.chart))}
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                title="移除练轴预设"
+                                aria-label="移除练轴预设"
+                                onclick={clearPracticeChart}
+                                class="shrink-0 rounded-lg p-2 text-slate-500 transition hover:bg-white/5 hover:text-red-300"
+                            >
+                                <Icon icon="mdi:close" class="size-4" />
+                            </button>
                         </div>
                     {/if}
                 </div>

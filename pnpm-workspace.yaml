@@ -1,5 +1,6 @@
 packages:
     - '.'
+    - 'apps/wwcombo'
 allowBuilds:
     better-sqlite3: true
     esbuild: true
