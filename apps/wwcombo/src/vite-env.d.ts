@@ -1,11 +1,27 @@
 /// <reference types="vite/client" />
 
+import type {
+  DesktopBootstrap,
+  LocalDocument,
+  RemoteHealth,
+  SyncQueueEntry
+} from '@northshore/desktop-protocol';
+
 declare global {
   const __APP_VERSION__: string;
   interface Window {
     __TAURI_INTERNALS__?: unknown;
     trainerDesktop?: {
       isDesktop: true;
+      desktopBootstrap(): Promise<DesktopBootstrap>;
+      openAfygPortal(serverOrigin: string): Promise<void>;
+      remoteHealth(serverOrigin: string): Promise<RemoteHealth>;
+      localStoreGet<T>(namespace: string, id: string): Promise<LocalDocument<T> | null>;
+      localStorePut<T>(namespace: string, id: string, payload: T, revision?: number, syncable?: boolean): Promise<LocalDocument<T>>;
+      localStoreDelete(namespace: string, id: string, syncable?: boolean): Promise<boolean>;
+      syncQueueList(limit?: number): Promise<SyncQueueEntry[]>;
+      syncQueueAck(queueId: number): Promise<boolean>;
+      syncQueueFail(queueId: number, message: string): Promise<boolean>;
       setOverlayVisible(visible: boolean): Promise<void>;
       setOverlayClickThrough(enabled: boolean): Promise<void>;
       setOverlayBounds(bounds: { x: number; y: number; width: number; height: number }): Promise<void>;

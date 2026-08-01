@@ -81,6 +81,13 @@ nav button svg { flex: 0 0 auto; margin: 0; }
 .sidebar:hover .sidebar-illustration { left: -18px; width: 242px; opacity: .96; }
 .sidebar-tool svg { flex: 0 0 auto; margin: 0; }
 .sidebar-tool.active { background: #b90000; border-color: #ff4b3d; color: white; }
+.sidebar-afyg-portal { position: relative; margin-top: auto; border-color: rgba(68,201,156,.5); background: rgba(7,28,24,.78); }
+.sidebar-afyg-portal + .sidebar-global-listener { margin-top: 8px; }
+.sidebar-afyg-portal:hover { border-color: rgba(96,231,183,.82); background: rgba(12,55,45,.9); }
+.sidebar-remote-status { position: absolute; top: 7px; right: 7px; width: 7px; height: 7px; border: 1px solid rgba(0,0,0,.7); border-radius: 50%; background: #f0bb3a; box-shadow: 0 0 0 2px rgba(240,187,58,.14); }
+.sidebar-afyg-portal.online .sidebar-remote-status { background: #35d08b; box-shadow: 0 0 0 2px rgba(53,208,139,.16); }
+.sidebar-afyg-portal.offline .sidebar-remote-status { background: #e55757; box-shadow: 0 0 0 2px rgba(229,87,87,.16); }
+.sidebar:hover .sidebar-afyg-portal .sidebar-remote-status { right: 12px; }
 .sidebar:hover nav { justify-items: stretch; }
 .sidebar:hover nav button { width: 100%; justify-content: flex-start; gap: 7px; padding: 0 12px; }
 .sidebar-nav-ruby { ruby-align: start; ruby-position: over; line-height: 1; text-align: left; white-space: nowrap; }

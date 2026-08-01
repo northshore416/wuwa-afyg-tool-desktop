@@ -1,6 +1,6 @@
 {
     "name": "@northshore/afyg-combo-trainer",
-    "version": "0.3.0",
+    "version": "0.0.5",
     "private": true,
     "license": "MIT",
     "description": "AFYG integrated desktop combo recorder and practice trainer for Wuthering Waves.",
@@ -19,7 +19,9 @@
         "pixi-spine": "4.0.6",
         "pixi.js": "7.4.3",
         "react": "19.2.7",
-        "react-dom": "19.2.7"
+        "react-dom": "19.2.7",
+        "@northshore/desktop-api-client": "workspace:*",
+        "@northshore/desktop-protocol": "workspace:*"
     },
     "devDependencies": {
         "@tauri-apps/cli": "2.11.4",

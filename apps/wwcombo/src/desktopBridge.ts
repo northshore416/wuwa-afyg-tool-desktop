@@ -1,3 +1,9 @@
+import type {
+  DesktopBootstrap,
+  LocalDocument,
+  RemoteHealth,
+  SyncQueueEntry
+} from '@northshore/desktop-protocol';
 import { convertFileSrc, invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
@@ -60,6 +66,15 @@ export function createDesktopBridge(): DesktopBridge | null {
 
   const bridge: DesktopBridge = {
     isDesktop: true,
+    desktopBootstrap: () => invoke<DesktopBootstrap>('desktop_bootstrap'),
+    openAfygPortal: (serverOrigin: string) => invoke<void>('open_afyg_portal', { serverOrigin }),
+    remoteHealth: (serverOrigin: string) => invoke<RemoteHealth>('remote_health', { serverOrigin }),
+    localStoreGet: <T,>(namespace: string, id: string) => invoke<LocalDocument<T> | null>('local_store_get', { namespace, id }),
+    localStorePut: <T,>(namespace: string, id: string, payload: T, revision?: number, syncable = false) => invoke<LocalDocument<T>>('local_store_put', { namespace, id, payload, revision, syncable }),
+    localStoreDelete: (namespace: string, id: string, syncable = false) => invoke<boolean>('local_store_delete', { namespace, id, syncable }),
+    syncQueueList: (limit = 50) => invoke<SyncQueueEntry[]>('sync_queue_list', { limit }),
+    syncQueueAck: (queueId: number) => invoke<boolean>('sync_queue_ack', { queueId }),
+    syncQueueFail: (queueId: number, message: string) => invoke<boolean>('sync_queue_fail', { queueId, message }),
     setOverlayVisible: (visible: boolean) => invoke('set_overlay_visible', { visible }),
     setOverlayClickThrough: (enabled: boolean) => invoke('set_overlay_click_through', { enabled }),
     setOverlayBounds: (bounds: OverlayBounds) => invoke('set_overlay_bounds', { bounds }),

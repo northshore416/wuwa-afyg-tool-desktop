@@ -1,7 +1,9 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState  } from 'react';
 import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactNode  } from 'react';
 import { createPortal  } from 'react-dom';
-import { Activity, ArrowLeft, BookOpen, Bug, Check, ChevronLeft, ChevronRight, Download, Eye, EyeOff, FileText, FileVideo, FlaskConical, FolderOpen, Gamepad2, GraduationCap, GripVertical, History, Keyboard, Layers, Moon, Music2, Move, Palette, Pause, Pencil, Plus, Play, Repeat2, RotateCcw, Save, Scissors, Settings, Share2, Square, Stamp, Sun, Target, Trash2, Upload, X  } from 'lucide-react';
+import { createDesktopApiClient  } from '@northshore/desktop-api-client';
+import { DEFAULT_SERVER_ORIGIN  } from '@northshore/desktop-protocol';
+import { Activity, ArrowLeft, BookOpen, Bug, Check, ChevronLeft, ChevronRight, Cloud, CloudOff, Download, Eye, EyeOff, FileText, FileVideo, FlaskConical, FolderOpen, Gamepad2, GraduationCap, GripVertical, History, Keyboard, Layers, Moon, Music2, Move, Palette, Pause, Pencil, Plus, Play, Repeat2, RotateCcw, Save, Scissors, Settings, Share2, Square, Stamp, Sun, Target, Trash2, Upload, X  } from 'lucide-react';
 import {
   CharacterSlot,
   ComboChart,
@@ -233,6 +235,7 @@ type TimelineHistorySnapshot = { chart: ComboChart | null; contentLabels: Record
 type TimelineHistoryControl = { canUndo: boolean; canRedo: boolean; onCaptureHistory: () => void; onUndo: () => void; onRedo: () => void  };
 
 const STORAGE_KEY = 'ww-combo-trainer-state-v2';
+const AFYG_SERVER_ORIGIN = import.meta.env.VITE_AFYG_SERVER_ORIGIN?.trim() || DEFAULT_SERVER_ORIGIN;
 const APPEARANCE_MODE_STORAGE_KEY = 'ww-combo-trainer-appearance-mode-v1';
 const OVERLAY_LAYOUT_PRESET_STORAGE_KEY = 'ww-combo-trainer-overlay-layout-presets-v1';
 const FIRST_RUN_HELP_PROMPT_STORAGE_KEY = 'ww-combo-trainer-help-prompt-v1';
@@ -268,7 +271,9 @@ const REMOTE_PROJECT_ASSET_API = /^https?:\/\//i.test(CONFIGURED_PROJECT_ASSET_A
 const REMOTE_PROJECT_ASSET_DB_NAME = 'ww-combo-project-asset-cache-v1';
 const REMOTE_PROJECT_ASSET_STORE = 'images';
 const REMOTE_PROJECT_ASSET_MANIFEST_KEY = 'ww-combo-project-asset-manifest-v1';
-const REMOTE_APP_RELEASE_API = new URL('app-release.json', REMOTE_PROJECT_ASSET_API).toString();
+const DEFAULT_APP_RELEASE_API = 'https://api.github.com/repos/northshore416/wuwa-afyg-tool-desktop/releases/latest';
+const CONFIGURED_APP_RELEASE_API = String(import.meta.env.VITE_APP_RELEASE_API || '').trim();
+const REMOTE_APP_RELEASE_API = /^https:\/\//i.test(CONFIGURED_APP_RELEASE_API) ? CONFIGURED_APP_RELEASE_API : DEFAULT_APP_RELEASE_API;
 const PROJECT_ASSET_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 const APP_RELEASE_REFRESH_INTERVAL_MS = 15 * 60 * 1000;
 const DRAFT_MOVE_ID = '__draft__';
@@ -680,7 +685,45 @@ async function fetchProjectAssetManifest(): Promise<ProjectAssetManifest | null>
   return manifest;
  }
 
+function normalizeGitHubAppRelease(value: unknown): AppReleaseManifest | null {
+  const record = value as {
+    tag_name?: unknown;
+    name?: unknown;
+    body?: unknown;
+    published_at?: unknown;
+    html_url?: unknown;
+    assets?: unknown;
+  } | null;
+  const version = typeof record?.tag_name === 'string' ? record.tag_name.trim().replace(/^v/i, '') : '';
+  if (!/^\d+\.\d+\.\d+$/.test(version)) return null;
+  const assets = (Array.isArray(record?.assets) ? record.assets : []).flatMap((value) => {
+    if (!value || typeof value !== 'object') return [];
+    const asset = value as Record<string, unknown>;
+    const url = typeof asset.browser_download_url === 'string' ? asset.browser_download_url.trim() : '';
+    const fileName = typeof asset.name === 'string' ? asset.name.trim() : '';
+    if (!/^https:\/\/github\.com\//i.test(url) || !fileName) return [];
+    return [{ url, fileName, bytes: typeof asset.size === 'number' ? asset.size : undefined }];
+  });
+  const releasePage = typeof record?.html_url === 'string' && /^https:\/\/github\.com\//i.test(record.html_url)
+    ? record.html_url
+    : '';
+  const download = assets.find((asset) => /setup.*\.exe$/i.test(asset.fileName))
+    ?? assets.find((asset) => /\.msi$/i.test(asset.fileName))
+    ?? assets.find((asset) => /\.exe$/i.test(asset.fileName))
+    ?? (releasePage ? { url: releasePage } : null);
+  return {
+    schemaVersion: 1,
+    version,
+    title: typeof record?.name === 'string' ? record.name : `椰果工具箱 ${version}`,
+    notes: typeof record?.body === 'string' ? record.body.slice(0, 1000) : '',
+    publishedAt: typeof record?.published_at === 'string' ? record.published_at : '',
+    download
+  };
+}
+
 function normalizeAppRelease(value: unknown): AppReleaseManifest | null {
+  const githubRelease = normalizeGitHubAppRelease(value);
+  if (githubRelease) return githubRelease;
   const record = value as Partial<AppReleaseManifest> | null;
   if (!record || record.schemaVersion !== 1 || typeof record.version !== 'string' || !/^\d+\.\d+\.\d+$/.test(record.version)) return null;
   const resolvedDownloadUrl = record.download && typeof record.download.url === 'string' && record.download.url.trim()
@@ -1306,6 +1349,10 @@ export default function App() {
   const { language, text  } = useI18n();
   const saved = useMemo(loadSavedState, []);
   const desktop = useMemo(() => createDesktopBridge(), []);
+  const remoteApi = useMemo(() => createDesktopApiClient({ origin: AFYG_SERVER_ORIGIN }), []);
+  const [remoteStatus, setRemoteStatus] = useState<'checking' | 'online' | 'offline'>('checking');
+  const [remoteStatusMessage, setRemoteStatusMessage] = useState('\u6b63\u5728\u68c0\u67e5\u670d\u52a1\u5668');
+  const [desktopDataPath, setDesktopDataPath] = useState('');
   const getDisplaySize = useMemo(() => desktop?.getDisplaySize ? () => desktop.getDisplaySize!() : undefined, [desktop]);
   const [page, setPage] = useState<Page>('home');
   const [settingsView, setSettingsView] = useState<SettingsView>('settings');
@@ -1487,9 +1534,62 @@ export default function App() {
    }, [page, Boolean(shareDraft)]);
 
   useEffect(() => {
-    const payload = JSON.stringify({ moves, bindings, gamepadBindings, inputMode, gamepadIconSet, keyboardIconMode, shortcutSettings, customIconSources, chart, library, startingCharacterSlot, practiceRoleOrder, overlaySettings, overlayLayoutBounds, comboImageStyle, verticalComboImageStyle, waterfallComboImageStyle, roleBaseFollowsAvatar, rhythmUiSettings, axisGateEnabled, resetPracticeProgressOnStop, exportDirectory, recordingIndicatorEnabled, recordingIndicatorCorner, live2dEnabled, teamPresets  });
+    if (!desktop) return;
+    let disposed = false;
+    void desktop.desktopBootstrap().then((bootstrap) => {
+      if (!disposed) setDesktopDataPath(bootstrap.databasePath);
+    }).catch((error) => console.warn('Desktop bootstrap failed.', error));
+
+    if (!localStorage.getItem(STORAGE_KEY)) {
+      void desktop.localStoreGet<Record<string, unknown>>('trainer-state', 'primary').then((document) => {
+        if (disposed || !document) return;
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(document.payload));
+        window.location.reload();
+      }).catch((error) => console.warn('Desktop state recovery failed.', error));
+    }
+    return () => { disposed = true; };
+   }, [desktop]);
+
+  useEffect(() => {
+    let disposed = false;
+    const checkRemote = async () => {
+      try {
+        if (desktop) {
+          const health = await desktop.remoteHealth(AFYG_SERVER_ORIGIN);
+          if (disposed) return;
+          setRemoteStatus(health.online ? 'online' : 'offline');
+          setRemoteStatusMessage(health.online ? `\u670d\u52a1\u5668\u5df2\u8fde\u63a5 \u00b7 ${health.latencyMs} ms` : (health.detail || '\u670d\u52a1\u5668\u6682\u65f6\u4e0d\u53ef\u7528'));
+          return;
+        }
+        const capabilities = await remoteApi.getCapabilities().catch(() => remoteApi.getHealth());
+        if (disposed) return;
+        setRemoteStatus(capabilities.ok ? 'online' : 'offline');
+        setRemoteStatusMessage(capabilities.ok ? '\u670d\u52a1\u5668\u5df2\u8fde\u63a5' : '\u670d\u52a1\u5668\u6682\u65f6\u4e0d\u53ef\u7528');
+      } catch (error) {
+        if (disposed) return;
+        setRemoteStatus('offline');
+        setRemoteStatusMessage(error instanceof Error ? error.message : String(error));
+      }
+    };
+    void checkRemote();
+    const timer = window.setInterval(() => void checkRemote(), 60_000);
+    return () => {
+      disposed = true;
+      window.clearInterval(timer);
+    };
+   }, [desktop, remoteApi]);
+  useEffect(() => {
+    const snapshotPayload = { moves, bindings, gamepadBindings, inputMode, gamepadIconSet, keyboardIconMode, shortcutSettings, customIconSources, chart, library, startingCharacterSlot, practiceRoleOrder, overlaySettings, overlayLayoutBounds, comboImageStyle, verticalComboImageStyle, waterfallComboImageStyle, roleBaseFollowsAvatar, rhythmUiSettings, axisGateEnabled, resetPracticeProgressOnStop, exportDirectory, recordingIndicatorEnabled, recordingIndicatorCorner, live2dEnabled, teamPresets  };
+    const payload = JSON.stringify(snapshotPayload);
     if (payload.length < LOCAL_STORAGE_SOFT_LIMIT) localStorage.setItem(STORAGE_KEY, payload);
-   }, [moves, bindings, gamepadBindings, inputMode, gamepadIconSet, keyboardIconMode, shortcutSettings, customIconSources, chart, library, startingCharacterSlot, practiceRoleOrder, overlaySettings, overlayLayoutBounds, comboImageStyle, verticalComboImageStyle, waterfallComboImageStyle, roleBaseFollowsAvatar, rhythmUiSettings, axisGateEnabled, resetPracticeProgressOnStop, exportDirectory, recordingIndicatorEnabled, recordingIndicatorCorner, live2dEnabled, teamPresets]);
+    const sqliteTimer = desktop ? window.setTimeout(() => {
+      void desktop.localStorePut('trainer-state', 'primary', snapshotPayload, Date.now(), false)
+        .catch((error) => console.warn('Desktop state save failed.', error));
+    }, 250) : null;
+    return () => {
+      if (sqliteTimer !== null) window.clearTimeout(sqliteTimer);
+    };
+   }, [moves, bindings, gamepadBindings, inputMode, gamepadIconSet, keyboardIconMode, shortcutSettings, customIconSources, chart, library, startingCharacterSlot, practiceRoleOrder, overlaySettings, overlayLayoutBounds, comboImageStyle, verticalComboImageStyle, waterfallComboImageStyle, roleBaseFollowsAvatar, rhythmUiSettings, axisGateEnabled, resetPracticeProgressOnStop, exportDirectory, recordingIndicatorEnabled, recordingIndicatorCorner, live2dEnabled, teamPresets, desktop]);
 
   useEffect(() => setChartTitle(chart?.title ?? ''), [chart?.id]);
   useEffect(() => {
@@ -2493,13 +2593,23 @@ export default function App() {
     setFirstRunHelpPromptOpen(true);
    }
 
+  async function openAfygWorkspace() {
+    try {
+      if (desktop) await desktop.openAfygPortal(AFYG_SERVER_ORIGIN);
+      else window.open(AFYG_SERVER_ORIGIN, '_blank', 'noopener,noreferrer');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      showToast(text(`\u65e0\u6cd5\u6253\u5f00\u6930\u679c\u5de5\u5177\u7bb1\uff1a${message}`, `Unable to open AFYG Tools: ${message}`));
+    }
+   }
+
   const helpContent = HELP_CONTENT[language];
 
   return (
     <div className={`app-shell ${appearanceMode === 'night' ? 'theme-night' : '' } ${appearanceMode === 'day' ? 'theme-day' : '' } ${appearanceMode === 'night2' ? 'theme-night2' : '' } ${page === 'experiment' && experimentPage === 'axis' ? 'axis-game-open' : '' }` }>
       {toastMessage && <div className="app-toast" role="status">{toastMessage}</div>}
       {availableUpdate && <section className="app-update-notice" aria-label={text('客户端更新', 'Client Update') }>
-        <div className="app-update-heading"><div><span>{text('发现新版本', 'New version available') }</span><strong>{availableUpdate.title || `WW Combo Trainer ${availableUpdate.version }`}</strong></div><button type="button" title={text('稍后提醒', 'Remind me later') } aria-label={text('关闭更新提示', 'Close update notice') } onClick={() => { dismissedUpdateVersionRef.current = availableUpdate.version; setAvailableUpdate(null);  } }><X size={17 } /></button></div>
+        <div className="app-update-heading"><div><span>{text('发现新版本', 'New version available') }</span><strong>{availableUpdate.title || `椰果工具箱 ${availableUpdate.version }`}</strong></div><button type="button" title={text('稍后提醒', 'Remind me later') } aria-label={text('关闭更新提示', 'Close update notice') } onClick={() => { dismissedUpdateVersionRef.current = availableUpdate.version; setAvailableUpdate(null);  } }><X size={17 } /></button></div>
         <p className="app-update-version">v{__APP_VERSION__ } <span>→</span> v{availableUpdate.version }</p>
         {availableUpdate.notes && <p className="app-update-notes">{availableUpdate.notes }</p>}
         {availableUpdate.download && <a href={availableUpdate.download.url } download={availableUpdate.download.fileName } target="_blank" rel="noopener noreferrer"><Download size={17 } />{text('下载新版本', 'Download Update') }</a>}
@@ -2513,6 +2623,17 @@ export default function App() {
           <button className={page === 'experiment' ? 'active' : '' } onClick={() => { setExperimentOpenedFromHome(false); setExperimentPage('home'); navigateToPage('experiment');  } }><FlaskConical size={18 } /><span>{language === 'zh-CN' ? <ruby className="sidebar-nav-ruby">实验<rt>Labs</rt></ruby> : text('实验', 'Labs') }</span></button>
           <button className={page === 'settings' ? 'active' : '' } onClick={() => navigateToPage('settings') }><Settings size={18 } /><span>{language === 'zh-CN' ? <ruby className="sidebar-nav-ruby">设置<rt>Settings</rt></ruby> : text('设置', 'Settings') }</span></button>
         </nav>
+        <button
+          className={`sidebar-tool sidebar-afyg-portal ${remoteStatus}` }
+          type="button"
+          title={`${remoteStatusMessage}${desktopDataPath ? `\n${desktopDataPath}` : '' }` }
+          aria-label={text('\u6253\u5f00\u6930\u679c\u5de5\u5177\u7bb1', 'Open AFYG Tools') }
+          onClick={() => void openAfygWorkspace() }
+        >
+          {remoteStatus === 'online' ? <Cloud size={18 } /> : <CloudOff size={18 } />}
+          <span>{text('\u6930\u679c\u62c9\u8868', 'AFYG Tools') }</span>
+          <i className="sidebar-remote-status" aria-hidden="true" />
+        </button>
         <button className={`sidebar-tool sidebar-global-listener ${globalInputEnabled ? 'active' : 'capture-attention' }` } title={text(globalInputStatus.chinese, globalInputStatus.english) } onClick={() => void (globalInputEnabled ? stopGlobalInput() : startGlobalInput()) }><Keyboard size={18 } /><span>{text('全局捕获', 'Global Input Capture') }</span></button>
         <div className="sidebar-illustration" aria-hidden="true" />
       </aside>

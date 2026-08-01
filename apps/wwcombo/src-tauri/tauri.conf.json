@@ -1,7 +1,7 @@
 {
     "$schema": "https://schema.tauri.app/config/2",
-    "productName": "椰果连段训练器",
-    "version": "0.3.0",
+    "productName": "椰果工具箱",
+    "version": "0.0.5",
     "identifier": "com.northshore416.afyg.combotrainer",
     "build": {
         "beforeDevCommand": "npm.cmd run dev",
@@ -13,7 +13,7 @@
         "windows": [
             {
                 "label": "main",
-                "title": "椰果连段训练器",
+                "title": "椰果工具箱",
                 "width": 1280,
                 "height": 820,
                 "minWidth": 1080,
@@ -81,17 +81,29 @@
             }
         ],
         "security": {
-            "csp": null,
+            "csp": "default-src 'self' customprotocol: asset:; connect-src 'self' ipc: http://ipc.localhost http://127.0.0.1:* ws://127.0.0.1:* https://ygkit.usotsuki-kaze.com https://wuwa-hpyg-tool.200503.xyz https://nova.fb520.site https://api.github.com; img-src 'self' asset: http://asset.localhost blob: data: https:; media-src 'self' asset: http://asset.localhost blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; script-src 'self'; worker-src 'self' blob:; object-src 'none'; frame-src 'none'",
             "assetProtocol": {
                 "enable": true,
-                "scope": ["**"]
+                "scope": []
             }
         }
     },
     "bundle": {
         "active": true,
         "targets": "all",
-        "icon": ["icons/icon.ico"],
-        "resources": []
+        "icon": [
+            "icons/icon.ico"
+        ],
+        "resources": [],
+        "windows": {
+            "wix": {
+                "language": "zh-CN"
+            },
+            "nsis": {
+                "languages": [
+                    "SimpChinese"
+                ]
+            }
+        }
     }
 }

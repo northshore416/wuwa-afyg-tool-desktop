@@ -1,3 +1,5 @@
+mod desktop_store;
+
 use once_cell::sync::Lazy;
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
@@ -752,14 +754,24 @@ fn pick_export_directory(current_directory: String, title: String) -> Option<Str
 }
 
 #[tauri::command]
-fn pick_video_file() -> Option<PickedVideoFile> {
-    rfd::FileDialog::new()
-        .add_filter("视频文件", &["mp4", "mov", "mkv", "webm", "avi", "m4v"])
-        .pick_file()
-        .map(|path| PickedVideoFile {
-            name: path.file_name().and_then(|name| name.to_str()).unwrap_or("video").to_string(),
-            path: path.to_string_lossy().to_string(),
-        })
+fn pick_video_file(app: AppHandle) -> Option<PickedVideoFile> {
+    let path = rfd::FileDialog::new()
+        .add_filter(
+            "\u{89c6}\u{9891}\u{6587}\u{4ef6}",
+            &["mp4", "mov", "mkv", "webm", "avi", "m4v"],
+        )
+        .pick_file()?;
+    if let Err(error) = app.asset_protocol_scope().allow_file(&path) {
+        eprintln!("failed to add selected video to the asset scope: {error}");
+    }
+    Some(PickedVideoFile {
+        name: path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("video")
+            .to_string(),
+        path: path.to_string_lossy().to_string(),
+    })
 }
 
 #[tauri::command]
@@ -958,7 +970,10 @@ fn unique_export_path(path: PathBuf) -> PathBuf {
         return path;
     }
     let parent = path.parent().unwrap_or_else(|| Path::new(""));
-    let stem = path.file_stem().and_then(|value| value.to_str()).unwrap_or("video");
+    let stem = path
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .unwrap_or("video");
     let extension = path.extension().and_then(|value| value.to_str());
     for index in 1..10_000 {
         let name = match extension {
@@ -970,7 +985,13 @@ fn unique_export_path(path: PathBuf) -> PathBuf {
             return candidate;
         }
     }
-    parent.join(format!("{stem}-{}{}", current_time_ms() as u64, extension.map(|value| format!(".{value}")).unwrap_or_default()))
+    parent.join(format!(
+        "{stem}-{}{}",
+        current_time_ms() as u64,
+        extension
+            .map(|value| format!(".{value}"))
+            .unwrap_or_default()
+    ))
 }
 
 fn ffmpeg_error_summary(path: &Path) -> String {
@@ -1047,12 +1068,10 @@ fn find_ffmpeg(app: &AppHandle) -> Option<PathBuf> {
 }
 
 fn emit_input(event_type: &str, code: String) {
-    let is_pressed = event_type == "keydown"
-        || event_type == "mousedown"
-        || event_type == "gamepadbuttondown";
-    let is_released = event_type == "keyup"
-        || event_type == "mouseup"
-        || event_type == "gamepadbuttonup";
+    let is_pressed =
+        event_type == "keydown" || event_type == "mousedown" || event_type == "gamepadbuttondown";
+    let is_released =
+        event_type == "keyup" || event_type == "mouseup" || event_type == "gamepadbuttonup";
     if !is_pressed && !is_released {
         return;
     }
@@ -1299,7 +1318,9 @@ mod winhook {
                         }
                     }
                     let current_gamepad = read_xinput_codes();
-                    for (event_type, code) in gamepad_transitions(&previous_gamepad, &current_gamepad) {
+                    for (event_type, code) in
+                        gamepad_transitions(&previous_gamepad, &current_gamepad)
+                    {
                         emit_input(event_type, code);
                     }
                     previous_gamepad = current_gamepad;
@@ -1338,7 +1359,9 @@ mod winhook {
                 }
                 let address = GetProcAddress(module, b"XInputGetState\0".as_ptr());
                 if !address.is_null() {
-                    return Some(std::mem::transmute::<*const c_void, XInputGetStateFn>(address));
+                    return Some(std::mem::transmute::<*const c_void, XInputGetStateFn>(
+                        address,
+                    ));
                 }
             }
             None
@@ -1383,15 +1406,16 @@ mod winhook {
     ) -> Vec<(&'static str, String)> {
         let mut events = Vec::new();
 
-        if previous.contains(GAMEPAD_COMBO_MODIFIER)
-            && !current.contains(GAMEPAD_COMBO_MODIFIER)
-        {
+        if previous.contains(GAMEPAD_COMBO_MODIFIER) && !current.contains(GAMEPAD_COMBO_MODIFIER) {
             for code in GAMEPAD_CODE_ORDER {
                 if code != GAMEPAD_COMBO_MODIFIER
                     && previous.contains(code)
                     && current.contains(code)
                 {
-                    events.push(("gamepadbuttonup", format!("{GAMEPAD_COMBO_MODIFIER}+{code}")));
+                    events.push((
+                        "gamepadbuttonup",
+                        format!("{GAMEPAD_COMBO_MODIFIER}+{code}"),
+                    ));
                 }
             }
         }
@@ -1411,13 +1435,12 @@ mod winhook {
 
         for code in GAMEPAD_CODE_ORDER {
             if current.contains(code) && !previous.contains(code) {
-                let emitted_code = if code != GAMEPAD_COMBO_MODIFIER
-                    && current.contains(GAMEPAD_COMBO_MODIFIER)
-                {
-                    format!("{GAMEPAD_COMBO_MODIFIER}+{code}")
-                } else {
-                    String::from(code)
-                };
+                let emitted_code =
+                    if code != GAMEPAD_COMBO_MODIFIER && current.contains(GAMEPAD_COMBO_MODIFIER) {
+                        format!("{GAMEPAD_COMBO_MODIFIER}+{code}")
+                    } else {
+                        String::from(code)
+                    };
                 events.push(("gamepadbuttondown", emitted_code));
             }
         }
@@ -1616,6 +1639,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
+            desktop_store::initialize(app)?;
             if let Some(overlay) = app.get_webview_window("overlay") {
                 let _ = overlay.set_always_on_top(true);
                 let _ = overlay.set_shadow(false);
@@ -1709,6 +1733,10 @@ pub fn run() {
                             let _ = indicator.hide();
                             let _ = indicator.destroy();
                         }
+                        if let Some(portal) = app_handle.get_webview_window("afyg-portal") {
+                            let _ = portal.hide();
+                            let _ = portal.destroy();
+                        }
                         app_handle.exit(0);
                     }
                     _ => {}
@@ -1717,6 +1745,15 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            desktop_store::desktop_bootstrap,
+            desktop_store::local_store_get,
+            desktop_store::local_store_put,
+            desktop_store::local_store_delete,
+            desktop_store::sync_queue_list,
+            desktop_store::sync_queue_ack,
+            desktop_store::sync_queue_fail,
+            desktop_store::remote_health,
+            desktop_store::open_afyg_portal,
             set_overlay_visible,
             set_overlay_click_through,
             set_overlay_bounds,

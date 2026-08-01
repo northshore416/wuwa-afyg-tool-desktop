@@ -1,7 +1,7 @@
 {
     "name": "wuwa-afyg-tool",
     "private": true,
-    "version": "0.0.3",
+    "version": "0.0.5",
     "type": "module",
     "scripts": {
         "dev": "vite dev",
@@ -22,7 +22,9 @@
         "trainer:build": "pnpm --filter @northshore/afyg-combo-trainer build",
         "trainer:desktop:dev": "pnpm --filter @northshore/afyg-combo-trainer tauri:dev",
         "trainer:desktop:build": "pnpm --filter @northshore/afyg-combo-trainer tauri:build",
-        "trainer:desktop:build:full": "pnpm --filter @northshore/afyg-combo-trainer tauri:build:full"
+        "trainer:desktop:build:full": "pnpm --filter @northshore/afyg-combo-trainer tauri:build:full",
+        "shared:check": "pnpm --filter @northshore/desktop-protocol typecheck && pnpm --filter @northshore/desktop-api-client typecheck",
+        "desktop:check": "pnpm run shared:check && pnpm run check && pnpm run trainer:check"
     },
     "devDependencies": {
         "@iconify-json/mdi": "^1.2.3",
@@ -49,6 +51,7 @@
     "dependencies": {
         "better-sqlite3": "^12.0.0",
         "chart.js": "^4.5.1",
-        "prismjs": "^1.30.0"
+        "prismjs": "^1.30.0",
+        "@northshore/desktop-protocol": "workspace:*"
     }
 }
